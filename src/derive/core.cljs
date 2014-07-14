@@ -1,5 +1,5 @@
 (ns derive.core
-  (:require-macros [derive.core :refer [defn-derive]]))
+  (:require-macros [derive.core])) ; :refer [defn-derive]]))
 
 (def ^{:dynamic true :private false} *dependency-tracker* nil)
 
@@ -77,7 +77,7 @@
            (if-not (empty? (set/intersection changes deps))
              (with-dependency-capture deps
                (let [res (do ~@body)]
-                 (card* app task-id))))))))
+                 (card* app task-id)))))))))
 
 
 

@@ -7,7 +7,7 @@
   [[tracker dbs params] & body]
   (if (sequential? IDependencyTracker var)
     `(binding [derive.core/*dependency-tracker* ~var]
-       ~@body)
+       ~@body)))
 
 ;; TODO: Support metadata arguments on function name...
 ;; TODO: Support full defn function signature
@@ -20,5 +20,5 @@
          (if (satisfied-dependencies? tracker# new-dbs# params#)
            (derived-value tracker# params#)
            (with-dependency-capture [tracker# new-dbs# params#]
-             ~@body))
+             ~@body))))))
 

@@ -275,15 +275,52 @@ tree in shared out-of-band state along with the database value.
 Higher level components have more system awareness and are able to
 determine where and how to update system state by plugging into 
 
+TODO Spike 1 - Semantics
+================
+1) Simplest possible native data store (heap indexed by :id)
+2) Simplest possible value / range queries (full heap scan)
+3) Pipe all models from service layer to native store
+4) Build derive functions that always recompute; force om models to always re-render
+5) Develop derive functions for current mobile timeline (simple functions only)
+6) Try executing mobile timeline using only non-pedestal models on a branch
+   - Gives us a performance baseline
+   - Compare to an om update that never renders (just to get performance gain possibility)
+
+TODO Spike 2 - Dependencies
+===============
+1) Add transaction notification to native store
+2) Derive functions as IFn objects that cache results given params
+3) Capture query dependencies up derive call stack
+4) Derive functions associate store, params, deps, and result
+5) Derive functions listen to store txns passed into it
+6) Invalidate cache as appropriate (use store dependency API)
+7) Develop Om extension to only re-render if any dependencies were invalidated
+
+TODO Spike 3 - Performance
+===============
+1) Native store indexing
+2) Think carefully about copying
+3) Develop conventions around manipulation of native objects
+4) Think about how to lazy/eager policies for derive fns
+   (e.g. simple derive functions could update cache from txn without query)
+
+
+Other Desired Features
+================
+Inhibit side effects to heap objects outside transaction!
+Secondary indexing allowing map/sort/filter (without copying?)
+Simple schemas to identify relational links among objects
+Create "Reference" values on import that, when derefed, return a copy of the target object
+Turn on 'always copy' for debugging purposes
+
 
 Acknowledgements
 ================
 
-This library emerged specifically from internal discussions between
-Ian Eslick, Dan Jolicoeur, and Ryan Medlin as well as some
-brainstorming with Dom Kiva-Meyer.  We benefitted heavily from work on
-previous systems that targeted similar problems, namely Pedestal by
-Cognitect / Brenton Ashworth and the various React Clojurescript
+This library was written by Ian Eslick and Dan Jolicoeur and benefited
+from discussions with Ryan Medlin and Dom Kiva-Meyer.  We pulled ideas
+from quite a few other systems, but most heavily from work on Pedestal
+by Cognitect / Brenton Ashworth and the various React Clojurescript
 libraries Om/Reagent/etc.
 
 

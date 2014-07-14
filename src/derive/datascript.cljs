@@ -1,5 +1,6 @@
 (ns derive.datascript)
 
+(comment
 (defn query-deps [conn query sources]
   (-> (apply analyze-q query sources)
       (filter #(= @conn (first %)))
@@ -15,3 +16,4 @@
   (->> (:tx-data report) ;; get all txs between versions
        (map ds/datom->index-keys)
        (reduce set/union #{})))
+)
