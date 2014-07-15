@@ -1,104 +1,122 @@
 (ns derive.nativestore
-  (:use purnam.native.functions)
   (:require [purnam.native]
-            [goog.structs.AvlTree :as avl]
+            [purnam.native.functions :refer [js-lookup js-assoc js-dissoc js-merge]]
+            [derive.protocols :as p]
             [goog.object :as obj]))
              
-
-;;
-;; Derive Protocols
-;;
-
-
-;;
-;; Store protocols
-;;
-
-(defprotocol INativeStore
-  (insert! [store obj])
-  (update! [store obj])
-  (delete! [store obj]))
-
-(defprotocol IIndexedStore
-  (add-index! [store name index])
-  (rem-index! [store name])
-  (get-index  [store name]))
-
-(defprotocol ITransactionalStore
-  (transact! [store fn & args]))
-
-(defprotocol IIndex
-  (index! [idx obj])
-  (unindex! [idx obj])
-  (key-fn [idx]))
-
-(defprotocol IScannableIndex
-  (comp-fn [idx])
-  (-scan   [idx f] [idx f start] [idx f start end] [idx f start end dir]))
-
 ;;
 ;; Native object store
 ;;
 
-(defn- update-log [store op value]
-  (let [id (.-txn-id store)]
-    (.push (.-txn-log store) #js {:op op :value (js-copy value) :date (Date.) :id id})
-    (set! (.-txn-id store) (inc id))))
+(deftype HashIndex [keyfn hashmap]
+  ILookup
+  (-lookup [_ val]
+    (js-lookup hashmap val))
+  p/IIndex
+  (key-fn [_] keyfn)
+  (index! [_ obj]
+    (let [old (js-lookup hashmap (keyfn obj))]
+      (js-assoc hashmap (keyfn obj) (if old (js-merge old obj) obj))))
+  (unindex! [_ obj]
+    (js-dissoc hashmap (keyfn obj))))
 
-(defn flush-log [
+(defn root-index [keyfn]
+  (HashIndex. keyfn #js {}))
 
+(deftype BadSortedIndex [keyfn compfn hashmap]
+  ILookup
+  (-lookup [_ val]
+    (js-lookup hashmap val))
+  p/IIndex
+  (key-fn [_] keyfn)
+  (index! [_ obj]
+    (let [old-set (js-lookup hashmap (keyfn obj))]
+      (if old-set
+        (.push old-set obj)
+        (js-assoc hashmap (keyfn obj) #js [obj]))))
+  (unindex! [_ obj]
+    (let [set (js-lookup hashmap (keyfn obj))]
+      (goog.array.remove set obj)))
+  p/IIndexedStore
+  (comparator-fn [idx] compfn)
+  p/IScannable
+  (scan [idx f]
+    (sort-by keyfn compfn (obj/getValues hashmap)))
+  (scan [idx f start]
+    (->> (obj/getValues hashmap)
+         (remove #(not (compfn start (keyfn %))))
+         (sort-by keyfn compfn)
+         (map f)
+         dorun))
+  (scan [idx f start end]
+    (->> (obj/getValues hashmap)
+         (remove #(not (compfn start (keyfn %))))
+         (filter #(not (compfn (keyfn %) end)))
+         (sort-by keyfn compfn)
+         (map f)
+         dorun))
+  (scan [idx f start end dir]
+    (->> (obj/getValues hashmap)
+         (remove #(not (compfn start (keyfn %))))
+         (filter #(not (compfn (keyfn %) end)))
+         (sort-by keyfn compfn)
+         (map f)
+         dorun)))
+
+(defn sorted-index [keyfn compfn]
+  (BadSortedIndex. keyfn compfn #js {}))
+(comment  
 (deftype NativeStore [root indices listeners txn-log ^:mutable txn-id]
   ILookup
   (-lookup [store id]
     (-lookup root id))
-  INativeStore
+  IStore
   (insert! [store obj]
-    (assert (not (contains? root obj)) "Does not exist")
+    (let [old (get root ((key-fn root) obj))]
+      (doseq [idx indices]
+        (unindex! idx old)))
     (index! root obj)
+    (let [new (get root ((key-fn root) obj))]
+      
     (doseq [idx indices]
       (index! idx obj))
-    (update-log store :insert (js-copy obj))
-    store)
-  (update! [store obj]
-    (if (not (contains? root obj))
-      (insert! store obj)
-      (do
-        (reindex! root obj)
-        (doseq [idx indices]
-          (reindex! idx obj))
-        (update-log store :update obj)))
     store)
   (delete! [store obj]
-    (assert (contains? root obj) "Exists")
-    (unindex! root obj)
-    (doseq [idx indices]
-      (unindex! root obj))
-    (update-log store :delete obj)
+    (assert (contains? root ((key-fn root) obj)) "Exists")
+    (let [ref (get root ((key-fn root) obj))]
+      (unindex! root ref)
+      (doseq [idx indices]
+        (unindex! idx ref)))
+    store))
+  IIndexedStore
+  (add-index! [store iname obj index]
+    (assert (not (get-index store iname)))
+    (js-assoc indices iname index)
     store)
-  ITransactionalStore
-  (transact! [store f & args]
-    ;; With mutation tracking enabled?
-    (apply f store args)))
+  (rem-index! [store iname]
+    (assert (get-index store iname))
+    (js-dissoc indices iname))
+  (get-index [store iname]
+    (js-lookup indices iname)))
+    
+;  ITransactionalStore
+;  (transact! [store f & args]
+;    ;; With mutation tracking enabled?
+;    (apply f store args)))
 
-(defn store [root-idx]
-  (NativeStore. root-idx #js {} #js {} #js [] 1))
-  
+(defn native-store [root-fn]
+  (NativeStore. (root-index root-fn) #js {} #js {} #js [] 1))
+
+(comment
+  (def test-store (native-store #(aget % "id")))
+  (p/add-index! test-store))
+
 ;;
 ;; Indexes
 ;; 
 
-
-(deftype HashIndex [kf htable]
-  IIndex
-  (index! [idx obj]
-    (obj/add htable (kf obj) obj))
-  (unindex! [idx obj]
-    (obj/remove htable (kf obj)))
-  (key-fn [idx] kf))
-
-(defn hash-index [key-fn]
-  (HashIndex. key-fn #js {}))
-
+(comment
+    
 (defn- scanner
   ([f]
      (fn [val] (f val) nil))
@@ -156,3 +174,4 @@
 
 (pr-str (:test test))
 (pr-str (meta test))
+))

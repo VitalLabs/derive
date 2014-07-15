@@ -277,8 +277,8 @@ determine where and how to update system state by plugging into
 
 TODO Spike 1 - Semantics
 ================
-1) Simplest possible native data store (heap indexed by :id)
-2) Simplest possible value / range queries (full heap scan)
+(DEBUGGING) 1) Simplest possible native data store (heap indexed by :id) 
+(DEBUGGING) 2) Simplest possible value / range queries (simple indexing) 
 3) Pipe all models from service layer to native store
 4) Build derive functions that always recompute; force om models to always re-render
 5) Develop derive functions for current mobile timeline (simple functions only)

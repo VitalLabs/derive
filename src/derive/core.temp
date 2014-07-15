@@ -3,25 +3,6 @@
 
 (def ^{:dynamic true :private false} *dependency-tracker* nil)
 
-;; Implemented by function and component caches
-(defprotocol IDependencyTracker
-  (reset-dependencies [this])
-  (record-dependencies [this params db dep])
-  (satisfied-dependencies? [this params new-dbs])
-  (record-value [this params value])
-  (derived-value [this params]))
-
-;; Implemented by a DB reference
-(defprotocol ITrackDependencies
-  (dependencies [this query params])
-  (changes [this new-db]))
-
-;; Passed to dependency trackers during queries via record-dependency
-(defprotocol IDependencySet
-  (merge-dependencies [this deps])
-  (dependency-match? [this changes]))
-
-
 ;;
 ;; Simple tracker
 ;;
