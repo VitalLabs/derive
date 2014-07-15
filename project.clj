@@ -9,6 +9,7 @@
                  [figwheel "0.1.3-SNAPSHOT"]
                  [prismatic/schema "0.2.2"]
                  [reagent "0.4.2"]
+                 [sablono "0.2.18"]
                  [vitalreactor/om "0.6.3.1"]]
   :plugins [[lein-cljsbuild "1.0.3"]
             [lein-exec "0.3.3"]
@@ -27,7 +28,7 @@
                         :pretty-print true
                         :preamble      ["reagent/react.js"]
                         :source-map true}}
-            
+
             #_{:id "test"
              :source-paths ["src" "test"]
              :notify-command ["scripts/run_tests.rb" :cljs.test/runner]
@@ -36,27 +37,24 @@
                         :optimizations :none
                         :pretty-print true
                         :source-map true}}]
-          
+
 ;          :test-commands {"unit-tests" ["scripts/run_tests.rb" :runner]}
           :repl-launch-commands {"phantom" ["phantomjs" "phantom/repl.js"]}
           }
-         
+
          :repl-options {:init (println "To start the browser-repl, run:\n"
                                        "(browser-repl)")
                         :caught clj-stacktrace.repl/pst+
                         :skip-default-init false}
-         
+
          :injections [(require '[cljs.repl.browser :as brepl]
                                '[cemerick.piggieback :as pb])
                       (defn browser-repl []
                         (pb/cljs-repl :repl-env (brepl/repl-env :port 9000)))]
-         
+
          :figwheel {:http-server-root "public" ;; assumes "resources"
                     :server-port 3449
                     :css-dirs ["resources/public/style/"]}
          }
 
    :release {}})
-
-         
-          

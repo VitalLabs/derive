@@ -8,6 +8,7 @@ pom.xml.asc
 /classes/
 /target/
 /checkouts/
+/resources/public/js/
 .lein-deps-sum
 .lein-repl-history
 .lein-plugins/
