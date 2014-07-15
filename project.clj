@@ -8,23 +8,55 @@
                  [im.chit/purnam.native "0.4.3"]
                  [figwheel "0.1.3-SNAPSHOT"]
                  [prismatic/schema "0.2.2"]
+                 [reagent "0.4.2"]
                  [vitalreactor/om "0.6.3.1"]]
   :plugins [[lein-cljsbuild "1.0.3"]
+            [lein-exec "0.3.3"]
+            [lein-externs "0.1.3"]
             [lein-figwheel "0.1.3-SNAPSHOT"]
-            [com.cemerick/clojurescript.test "0.2.2"]]
-  :source-paths ["src" "target/src"]
-  :test-paths ["test" "target/test"]
-  :cljsbuild {:repl-listen-port 9000
-              :repl-launch-commands {"phantom" ["phantomjs" "phantom/page-repl.js"]}
-              :builds [ {:id "dev"
-                         :source-paths ["src"]
-                         :compiler {:output-to "target/js/derive.js"
-                                    :optimizations :none
-                                    :pretty-print true
-                                    :source-map true}}
-                       #_{:id "prod"
-                        :source-paths ["src"]
-                        :compiler {:output-to "target/js/derive.min.js"
-                                   :optimizations :advanced}}]}
-  :hooks [leiningen.cljsbuild])
+            [com.cemerick/clojurescript.test "0.2.2"]
+            [com.cemerick/austin "0.1.4"]]
+  :profiles
+  {:dev {:cljsbuild
+         {:builds
+          [ {:id "main"
+             :source-paths ["src" "dev"]
+             :compiler {:output-to "resources/public/js/derive.js"
+                        :output-dir "resources/public/js/out"
+                        :optimizations :none
+                        :pretty-print true
+                        :preamble      ["reagent/react.js"]
+                        :source-map true}}
+            
+            #_{:id "test"
+             :source-paths ["src" "test"]
+             :notify-command ["scripts/run_tests.rb" :cljs.test/runner]
+             :compiler {:output-to "resources/public/js/derive.js"
+                        ;:output-dir "resources/public/js/out"
+                        :optimizations :none
+                        :pretty-print true
+                        :source-map true}}]
+          
+;          :test-commands {"unit-tests" ["scripts/run_tests.rb" :runner]}
+          :repl-launch-commands {"phantom" ["phantomjs" "phantom/repl.js"]}
+          }
+         
+         :repl-options {:init (println "To start the browser-repl, run:\n"
+                                       "(browser-repl)")
+                        :caught clj-stacktrace.repl/pst+
+                        :skip-default-init false}
+         
+         :injections [(require '[cljs.repl.browser :as brepl]
+                               '[cemerick.piggieback :as pb])
+                      (defn browser-repl []
+                        (pb/cljs-repl :repl-env (brepl/repl-env :port 9000)))]
+         
+         :figwheel {:http-server-root "public" ;; assumes "resources"
+                    :server-port 3449
+                    :css-dirs ["resources/public/style/"]}
+         }
 
+   :release {}})
+
+         
+          

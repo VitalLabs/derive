@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Derive Dev</title>
+    <link rel="stylesheet" type="text/css" href="style/app.css">
+  </head>
+
+  <body>
+  {if dev}
+    <script src="js/lib/react.min.js"></script>
+    <script src="js/out/goog/base.js"></script>
+  {/if}
+    <script src="js/derive.js"></script>
+  {if dev}
+    <script>goog.require("derive.main");</script>
+  {/if}
+    <script>derive.main.init({dev});</script>
+  </body>
+</html>

@@ -8,6 +8,8 @@
 ;; Native object store
 ;;
 
+;; Hash KV Index, meant to be for a root store index (unique keys)
+;; - Merging upsert against existing if keyfn output matches
 (deftype HashIndex [keyfn hashmap]
   ILookup
   (-lookup [_ val]
@@ -23,6 +25,9 @@
 (defn root-index [keyfn]
   (HashIndex. keyfn #js {}))
 
+
+;; KV index with poor implementation of ordering
+;; - Matches on object identity for re-indexing and unindex!
 (deftype BadSortedIndex [keyfn compfn hashmap]
   ILookup
   (-lookup [_ val]
@@ -65,7 +70,10 @@
 
 (defn sorted-index [keyfn compfn]
   (BadSortedIndex. keyfn compfn #js {}))
+
 (comment  
+
+;; Placeholder for a native, indexed, mutable/transactional store
 (deftype NativeStore [root indices listeners txn-log ^:mutable txn-id]
   ILookup
   (-lookup [store id]
