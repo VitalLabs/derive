@@ -51,7 +51,7 @@
 ;; + ILookup
 (defprotocol IStore
   (insert! [store obj])  ;; shallow merge upsert of native objects
-  (delete! [store obj])) ;; delete, only need primary ID in submitted object
+  (delete! [store id])) ;; delete, only need primary ID in submitted object
 
 ;; CompFn(KeyFn(obj)) -> value, obj
 (defprotocol IIndex
