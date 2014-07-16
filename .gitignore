@@ -14,3 +14,4 @@ pom.xml.asc
 .lein-plugins/
 .lein-failures
 *~
+/resources/public/js/derive.js
