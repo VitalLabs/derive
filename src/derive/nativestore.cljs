@@ -1,8 +1,9 @@
 (ns derive.nativestore
-  (:require [purnam.native]
-            [purnam.native.functions :refer [js-lookup js-assoc js-dissoc js-merge]]
-            [derive.protocols :as p]
-            [goog.object :as obj]))
+  (:require [goog.object :as obj]
+            [purnam.native]
+            [purnam.native.functions :refer [js-lookup js-assoc js-dissoc js-merge js-map]]
+            [derive.protocols :as p :refer [index! unindex! key-fn comparator-fn scan
+                                            insert! delete! add-index! rem-index! get-index]]))
              
 ;;
 ;; Native object store
@@ -12,64 +13,104 @@
 ;; - Merging upsert against existing if keyfn output matches
 (deftype HashIndex [keyfn hashmap]
   ILookup
-  (-lookup [_ val]
-    (js-lookup hashmap val))
+  (-lookup [idx val]
+    (js-lookup (.-hashmap idx) val))
   p/IIndex
-  (key-fn [_] keyfn)
-  (index! [_ obj]
-    (let [old (js-lookup hashmap (keyfn obj))]
-      (js-assoc hashmap (keyfn obj) (if old (js-merge old obj) obj))))
+  (key-fn [idx] (.-keyfn idx))
+  (index! [idx obj]
+    (let [key ((.-keyfn idx) obj)
+          hashmap (.-hashmap idx)
+          old (js-lookup hashmap key)]
+      (js-assoc hashmap key (if old (js-merge old obj) obj))))
   (unindex! [_ obj]
-    (js-dissoc hashmap (keyfn obj))))
+    (let [key ((.-keyfn idx) obj)
+          hashmap (.-hashmap idx)]
+      (js-dissoc hashmap key obj))))
 
 (defn root-index [keyfn]
   (HashIndex. keyfn #js {}))
 
-
-;; KV index with poor implementation of ordering
-;; - Matches on object identity for re-indexing and unindex!
-(deftype BadSortedIndex [keyfn compfn hashmap]
+;; KV index using binary search/insert/remove on array
+;; - Always inserts new objects in sorted order
+;; - Matches on object identity for unindex!
+(deftype BinaryIndex [keyfn compfn arry]
   ILookup
-  (-lookup [_ val]
-    (js-lookup hashmap val))
+  (-lookup [idx val]
+    (let [compfn (.-compfn idx)
+          keyfn (.-keyfn idx)
+          arry (.-arry idx)
+          index (goog.array.binarySearch arry val #(compfn %1 (keyfn %2)))]
+      (when (>= index 0)
+        (loop [end index]
+          (if (= (compfn val (aget arry i)) 0)
+            (recur (inc end))
+            (goog.array.slice arry index (inc end)))))))
   p/IIndex
-  (key-fn [_] keyfn)
-  (index! [_ obj]
-    (let [old-set (js-lookup hashmap (keyfn obj))]
-      (if old-set
-        (.push old-set obj)
-        (js-assoc hashmap (keyfn obj) #js [obj]))))
-  (unindex! [_ obj]
-    (let [set (js-lookup hashmap (keyfn obj))]
-      (goog.array.remove set obj)))
+  (key-fn [idx] (.-keyfn idx))
+  (index! [idx obj]
+    (let [compfn (.-compfn idx)
+          keyfn (.-keyfn idx)
+          arry (.-arry idx)
+          loc (goog.array.binarySearch arry obj #(compfn (keyfn %1) (keyfn %2)))]
+      (if (>= loc 0)
+        (goog.array.insertAt arry obj loc)
+        (goog.array.insertAt arry obj (- (inc loc)))))
+    idx)
+  (unindex! [idx obj]
+    (let [compfn (.-compfn idx)
+          keyfn (.-keyfn idx)
+          arry (.-arry idx)
+          loc (goog.array.findIndex arry #(= obj %))]
+      (assert (>= loc 0))
+      (goog.array.removeAt arry loc))
+    idx)
   p/IIndexedStore
-  (comparator-fn [idx] compfn)
+  (comparator-fn [idx] (.-compfn idx))
   p/IScannable
   (scan [idx f]
-    (sort-by keyfn compfn (obj/getValues hashmap)))
+    (let [keyfn (.-keyfn idx)
+          compfn (.-compfn idx)
+          arry (.-arry idx)
+          len (.-length arry)]
+      (loop [i 0]
+        (when-not (>= i len)
+          (f (aget arry i))
+          (recur (inc i))))))
   (scan [idx f start]
-    (->> (obj/getValues hashmap)
-         (remove #(not (compfn start (keyfn %))))
-         (sort-by keyfn compfn)
-         (map f)
-         dorun))
+    (let [keyfn (.-keyfn idx)
+          compfn (.-compfn idx)
+          arry (.-arry idx)
+          len (.-length arry)
+          head (goog.array.binarySearch arry start #(compfn %1 (keyfn %2)))
+          head (if (>= head 0) head (- (inc head)))]
+      (loop [i head]
+        (when-not (>= i len)
+          (f (aget arry i))
+          (recur (inc i))))))
   (scan [idx f start end]
-    (->> (obj/getValues hashmap)
-         (remove #(not (compfn start (keyfn %))))
-         (filter #(not (compfn (keyfn %) end)))
-         (sort-by keyfn compfn)
-         (map f)
-         dorun))
-  (scan [idx f start end dir]
-    (->> (obj/getValues hashmap)
-         (remove #(not (compfn start (keyfn %))))
-         (filter #(not (compfn (keyfn %) end)))
-         (sort-by keyfn compfn)
-         (map f)
-         dorun)))
+    (let [keyfn (.-keyfn idx)
+          compfn (.-compfn idx)
+          arry (.-arry idx)
+          head (goog.array.binarySearch arry start #(compfn %1 (keyfn %2)))
+          head (if (>= head 0) head (- (inc head)))
+          tail (goog.array.binarySearch arry end #(compfn %1 (keyfn %2)))
+          tail (if (>= tail 0) tail (- (inc tail)))]
+      (loop [i head]
+        (when-not (>= i tail)
+          (f (aget arry i))
+          (recur (inc i)))))))
 
-(defn sorted-index [keyfn compfn]
-  (BadSortedIndex. keyfn compfn #js {}))
+
+
+(defn ordered-index [keyfn compfn]
+  (BinaryIndex. keyfn compfn #js []))
+
+(def rindex (ordered-index :name compare))
+(index! rindex #js {:id 1 :name "Fred"})
+(index! rindex #js {:id 2 :name "Zoe"})
+(index! rindex #js {:id 3 :name "Apple"})
+(index! rindex #js {:id 4 :name "Flora"})
+(index! rindex #js {:id 5 :name "Flora"})
 
 (comment  
 

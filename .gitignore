@@ -1,4 +1,5 @@
-repl
+.repl
+.nrepl-port
 target
 out
 pom.xml
@@ -15,3 +16,4 @@ pom.xml.asc
 .lein-failures
 *~
 /resources/public/js/derive.js
+/.repl/client.js

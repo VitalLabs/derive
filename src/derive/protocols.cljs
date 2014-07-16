@@ -63,7 +63,7 @@
   (comparator-fn [idx]))
 
 (defprotocol IScannable
-  (scan [idx f] [idx f start] [idx f start end] [idx f start end dir]))
+  (scan [idx f] [idx f start] [idx f start end]))
 
 (defprotocol IIndexedStore
   (add-index! [store name index])

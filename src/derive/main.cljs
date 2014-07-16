@@ -4,12 +4,14 @@
             [sablono.core :as html :refer-macros [html]]
             [derive.repl :as repl]
             [derive.tools :as tools]
+            [derive.nativestore :as store]
             [derive.debug-level :as debug-level]))
 
 (enable-console-print!)
 
 (def root-div (.getElementById js/document "app"))
 (defonce state (atom {:text "Hello world, how are ya!" :count 0}))
+(def db (atom nil))
 
 (defn root-component
   [app owner]
@@ -22,10 +24,14 @@
         [:p (:text app) " " (:count app)]
         [:button {:on-click #(om/transact! app :count inc)} "Increment"]]))))
 
-(defn stop-app []
+(defn stop-app
+  "Stop the application"
+  []
   (om/detach-root! root-div))
 
-(defn start-app []
+(defn start-app 
+  "Start the application"
+  []
   (om/root root-component state {:target root-div :shared {}}))
 
 (defn ^:export init [dev]

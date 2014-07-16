@@ -15,6 +15,7 @@
             [lein-exec "0.3.3"]
             [lein-externs "0.1.3"]
             [lein-figwheel "0.1.3-SNAPSHOT"]
+            [clj-stacktrace "0.2.7"]
             [com.cemerick/clojurescript.test "0.2.2"]
             [com.cemerick/austin "0.1.4"]]
   :profiles
@@ -46,11 +47,17 @@
 
          :repl-options {:init (println "To start the browser-repl, run:\n"
                                        "(browser-repl)")
+                        :port 4004
                         :caught clj-stacktrace.repl/pst+
                         :skip-default-init false}
 
          :injections [(require '[cljs.repl.browser :as brepl]
                                '[cemerick.piggieback :as pb])
+                      (let [orig (ns-resolve (doto 'clojure.stacktrace require)
+                                            'print-cause-trace)
+                           new (ns-resolve (doto 'clj-stacktrace.repl require)
+                                           'pst)]
+                       (alter-var-root orig (constantly (deref new))))
                       (defn browser-repl []
                         (pb/cljs-repl :repl-env (brepl/repl-env :port 9000)))]
 
