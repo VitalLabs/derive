@@ -4,14 +4,28 @@
             [sablono.core :as html :refer-macros [html]]
             [derive.repl :as repl]
             [derive.tools :as tools]
+            [derive.protocols :as p]
             [derive.nativestore :as store]
             [derive.debug-level :as debug-level]))
 
 (enable-console-print!)
 
 (def root-div (.getElementById js/document "app"))
-(defonce state (atom {:text "Hello world, how are ya!" :count 0}))
-(def db (atom nil))
+(defonce state (atom {:current 0}))
+(defonce db (store/native-store #(aget % "id")))
+
+(defn load-db []
+  (p/insert! db #js {:id 1 :text "Hi there."})
+  (p/insert! db #js {:id 2 :text "I'm cycling..."})
+  (p/insert! db #js {:id 3 :text "...through a series of messages."})
+  (p/insert! db #js {:id 4 :text "And then I repeat!"}))
+
+(defn derive-text [db id]
+  (:text (db id)))
+
+(defn inc-mod [modulus]
+  (fn [old]
+    (mod (inc old) modulus)))
 
 (defn root-component
   [app owner]
@@ -21,8 +35,8 @@
       (html
        [:div
         [:h2 "Om Application"]
-        [:p (:text app) " " (:count app)]
-        [:button {:on-click #(om/transact! app :count inc)} "Increment"]]))))
+        [:p (derive-text (om/get-shared owner :db) (inc (:current app)))]
+        [:button {:on-click #(om/transact! app :current (inc-mod 4))} "Next"]]))))
 
 (defn stop-app
   "Stop the application"
@@ -32,7 +46,8 @@
 (defn start-app 
   "Start the application"
   []
-  (om/root root-component state {:target root-div :shared {}}))
+  (load-db)
+  (om/root root-component state {:target root-div :shared {:db db}}))
 
 (defn ^:export init [dev]
   (debug-level/set-level!)
