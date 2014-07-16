@@ -26,7 +26,7 @@
                         :output-dir "resources/public/js/out"
                         :optimizations :none
                         :pretty-print true
-                        :preamble      ["reagent/react.js"]
+                        :preamble ["templates/js/function_prototype_polyfill.js"]
                         :source-map true}}
 
             #_{:id "test"
@@ -36,10 +36,12 @@
                         ;:output-dir "resources/public/js/out"
                         :optimizations :none
                         :pretty-print true
-                        :source-map true}}]
+                        :source-map true
+                        :preamble ["templates/js/function_prototype_polyfill.js"]}} ]
 
 ;          :test-commands {"unit-tests" ["scripts/run_tests.rb" :runner]}
-          :repl-launch-commands {"phantom" ["phantomjs" "phantom/repl.js"]}
+          :repl-launch-commands {"phantom" ["phantomjs" "phantom/repl.js"]
+                                 "chrome" ["chrome"]}
           }
 
          :repl-options {:init (println "To start the browser-repl, run:\n"
@@ -54,7 +56,7 @@
 
          :figwheel {:http-server-root "public" ;; assumes "resources"
                     :server-port 3449
-                    :css-dirs ["resources/public/style/"]}
+                    :css-dirs ["resources/public/css/"]}
          }
 
    :release {}})

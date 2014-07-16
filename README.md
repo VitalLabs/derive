@@ -256,6 +256,21 @@ result can be returned.
 Calls to database query methods export a representation of the
 dependencies that query has on the database state.
 
+Workflow
+=================
+
+1) Live editing JS/CSS
+   - e.g. widgets file for Amelia and us in dev mode
+   - e.g. dev-noww full site editing of CSS/JS
+   - Ability to connect a REPL to this environment
+   
+2) Headless repl environment with the full code
+   - Connect from Emacs
+   - Meta-. navigation
+   - Developing new derive widgets
+   - C-x C-e eval optional
+   
+
 React Integration
 =================
 
