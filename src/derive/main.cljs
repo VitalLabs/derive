@@ -10,6 +10,10 @@
 
 (enable-console-print!)
 
+;;
+;; State
+;;
+
 (def root-div (.getElementById js/document "app"))
 (defonce state (atom {:current 0}))
 (defonce db (store/native-store #(aget % "id")))
@@ -19,6 +23,10 @@
   (p/insert! db #js {:id 2 :text "I'm cycling..."})
   (p/insert! db #js {:id 3 :text "...through a series of messages."})
   (p/insert! db #js {:id 4 :text "And then I repeat!"}))
+
+;;
+;; Derive renderable state
+;;
 
 (defn derive-text [db id]
   (:text (db id)))
@@ -32,11 +40,16 @@
   (reify
     om/IRender
     (render [_]
-      (html
-       [:div
-        [:h2 "Om Application"]
-        [:p (derive-text (om/get-shared owner :db) (inc (:current app)))]
-        [:button {:on-click #(om/transact! app :current (inc-mod 4))} "Next"]]))))
+      (let [db (om/get-shared owner :db)]
+        (html
+         [:div
+          [:h2 "Om Application"]
+          [:p (derive-text db (inc (:current app)))]
+          [:button {:on-click #(om/transact! app :current (inc-mod 4))} "Next"]])))))
+
+;;
+;; Setup and Lifecycle Management
+;;
 
 (defn stop-app
   "Stop the application"
