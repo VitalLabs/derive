@@ -1,8 +1,9 @@
 (ns derive.nativestore
-  (:require [purnam.native]
-            [purnam.native.functions :refer [js-lookup js-assoc js-dissoc js-merge]]
-            [derive.protocols :as p]
-            [goog.object :as obj]))
+  (:require [goog.object :as obj]
+            [purnam.native]
+            [purnam.native.functions :refer [js-lookup js-assoc js-dissoc js-merge js-map]]
+            [derive.protocols :as p :refer [index! unindex! key-fn comparator-fn scan
+                                            insert! delete! add-index! rem-index! get-index]]))
              
 ;;
 ;; Native object store
@@ -12,98 +13,173 @@
 ;; - Merging upsert against existing if keyfn output matches
 (deftype HashIndex [keyfn hashmap]
   ILookup
-  (-lookup [_ val]
-    (js-lookup hashmap val))
+  (-lookup [idx val]
+    (-lookup idx val nil))
+  (-lookup [idx val not-found]
+    (js-lookup (.-hashmap idx) val not-found))
+
+  IFn
+  (-invoke [idx k]
+    (-lookup idx k))
+  (-invoke [idx k not-found]
+    (-lookup idx k not-found))
+
+  ICounted
+  (-count [idx] (.-length (obj/getValues (.-hashmap idx))))
+
   p/IIndex
-  (key-fn [_] keyfn)
-  (index! [_ obj]
-    (let [old (js-lookup hashmap (keyfn obj))]
-      (js-assoc hashmap (keyfn obj) (if old (js-merge old obj) obj))))
-  (unindex! [_ obj]
-    (js-dissoc hashmap (keyfn obj))))
+  (key-fn [idx] (.-keyfn idx))
+  (index! [idx obj]
+    (let [key ((.-keyfn idx) obj)
+          hashmap (.-hashmap idx)
+          old (js-lookup hashmap key)]
+      (js-assoc hashmap key (if old (js-merge old obj) obj))))
+  (unindex! [idx obj]
+    (let [key ((.-keyfn idx) obj)
+          hashmap (.-hashmap idx)]
+      (js-dissoc hashmap key obj))))
 
 (defn root-index [keyfn]
   (HashIndex. keyfn #js {}))
 
-
-;; KV index with poor implementation of ordering
-;; - Matches on object identity for re-indexing and unindex!
-(deftype BadSortedIndex [keyfn compfn hashmap]
+;; KV index using binary search/insert/remove on array
+;; - Always inserts new objects in sorted order
+;; - Matches on object identity for unindex!
+(deftype BinaryIndex [keyfn compfn arry]
   ILookup
-  (-lookup [_ val]
-    (js-lookup hashmap val))
+  (-lookup [idx val]
+    (-lookup idx val nil))
+  (-lookup [idx val not-found]
+    (let [compfn (.-compfn idx)
+          keyfn (.-keyfn idx)
+          arry (.-arry idx)
+          index (goog.array.binarySearch arry val #(compfn %1 (keyfn %2)))]
+      (if (>= index 0)
+        (loop [end index]
+          (if (= (compfn val (keyfn (aget arry end))) 0)
+            (recur (inc end))
+            (goog.array.slice arry index end)))
+        not-found)))
+
+  IFn
+  (-invoke [idx k]
+    (-lookup idx k))
+  (-invoke [idx k not-found]
+    (-lookup idx k not-found))
+
   p/IIndex
-  (key-fn [_] keyfn)
-  (index! [_ obj]
-    (let [old-set (js-lookup hashmap (keyfn obj))]
-      (if old-set
-        (.push old-set obj)
-        (js-assoc hashmap (keyfn obj) #js [obj]))))
-  (unindex! [_ obj]
-    (let [set (js-lookup hashmap (keyfn obj))]
-      (goog.array.remove set obj)))
+  (key-fn [idx] (.-keyfn idx))
+  (index! [idx obj]
+    (let [compfn (.-compfn idx)
+          keyfn (.-keyfn idx)
+          arry (.-arry idx)
+          loc (goog.array.binarySearch arry obj #(compfn (keyfn %1) (keyfn %2)))]
+      (if (>= loc 0)
+        (goog.array.insertAt arry obj loc)
+        (goog.array.insertAt arry obj (- (inc loc)))))
+    idx)
+  (unindex! [idx obj]
+    (let [compfn (.-compfn idx)
+          keyfn (.-keyfn idx)
+          arry (.-arry idx)
+          loc (goog.array.findIndex arry #(= obj %))]
+      (assert (>= loc 0))
+      (goog.array.removeAt arry loc))
+    idx)
+
   p/IIndexedStore
-  (comparator-fn [idx] compfn)
+  (comparator-fn [idx] (.-compfn idx))
+
   p/IScannable
   (scan [idx f]
-    (sort-by keyfn compfn (obj/getValues hashmap)))
+    (let [keyfn (.-keyfn idx)
+          compfn (.-compfn idx)
+          arry (.-arry idx)
+          len (.-length arry)]
+      (loop [i 0]
+        (when-not (>= i len)
+          (f (aget arry i))
+          (recur (inc i))))))
   (scan [idx f start]
-    (->> (obj/getValues hashmap)
-         (remove #(not (compfn start (keyfn %))))
-         (sort-by keyfn compfn)
-         (map f)
-         dorun))
+    (let [keyfn (.-keyfn idx)
+          compfn (.-compfn idx)
+          arry (.-arry idx)
+          len (.-length arry)
+          head (goog.array.binarySearch arry start #(compfn %1 (keyfn %2)))
+          head (if (>= head 0) head (- (inc head)))]
+      (loop [i head]
+        (when-not (>= i len)
+          (f (aget arry i))
+          (recur (inc i))))))
   (scan [idx f start end]
-    (->> (obj/getValues hashmap)
-         (remove #(not (compfn start (keyfn %))))
-         (filter #(not (compfn (keyfn %) end)))
-         (sort-by keyfn compfn)
-         (map f)
-         dorun))
-  (scan [idx f start end dir]
-    (->> (obj/getValues hashmap)
-         (remove #(not (compfn start (keyfn %))))
-         (filter #(not (compfn (keyfn %) end)))
-         (sort-by keyfn compfn)
-         (map f)
-         dorun)))
+    (let [keyfn (.-keyfn idx)
+          compfn (.-compfn idx)
+          arry (.-arry idx)
+          head (goog.array.binarySearch arry start #(compfn %1 (keyfn %2)))
+          head (if (>= head 0) head (- (inc head)))
+          tail (goog.array.binarySearch arry end #(compfn %1 (keyfn %2)))
+          tail (if (>= tail 0) tail (- (inc tail)))]
+      (loop [i head]
+        (when-not (>= i tail)
+          (f (aget arry i))
+          (recur (inc i)))))))
 
-(defn sorted-index [keyfn compfn]
-  (BadSortedIndex. keyfn compfn #js {}))
-
-(comment  
+(defn ordered-index [keyfn compfn]
+  (BinaryIndex. keyfn compfn #js []))
 
 ;; Placeholder for a native, indexed, mutable/transactional store
 (deftype NativeStore [root indices listeners txn-log ^:mutable txn-id]
   ILookup
-  (-lookup [store id]
-    (-lookup root id))
-  IStore
+  (-lookup [store val]
+    (-lookup store val nil))
+  (-lookup [store id not-found]
+    (-lookup (.-root store) id not-found))
+
+  ICounted
+  (-count [store] (-count (.-root store)))
+
+  IFn
+  (-invoke [store k]
+    (-lookup store k))
+  (-invoke [store k not-found]
+    (-lookup store k not-found))
+
+  p/IStore
   (insert! [store obj]
-    (let [old (get root ((key-fn root) obj))]
-      (doseq [idx indices]
-        (unindex! idx old)))
-    (index! root obj)
-    (let [new (get root ((key-fn root) obj))]
-      
-    (doseq [idx indices]
-      (index! idx obj))
+    (let [key ((key-fn root) obj)
+          root (.-root store)
+          indices (obj/getValues (.-indices store))
+          ilen (.-length indices)
+          old (get root key)]
+      (when old
+        (loop [i 0]
+          (when-not (>= i ilen)
+            (unindex! (aget indices i) old)
+            (recur (inc i)))))
+      (index! root obj)
+      (let [new (get root key)]
+        (loop [i 0]
+          (when-not (>= i ilen)
+            (index! (aget indices i) new)
+            (recur (inc i))))))
     store)
-  (delete! [store obj]
-    (assert (contains? root ((key-fn root) obj)) "Exists")
-    (let [ref (get root ((key-fn root) obj))]
-      (unindex! root ref)
+  (delete! [store id]
+    (assert (contains? root id) "Exists")
+    (let [obj (get root id)]
+      (unindex! root obj)
       (doseq [idx indices]
-        (unindex! idx ref)))
-    store))
-  IIndexedStore
-  (add-index! [store iname obj index]
+        (unindex! idx obj)))
+    store)
+
+  p/IIndexedStore
+  (add-index! [store iname index]
     (assert (not (get-index store iname)))
     (js-assoc indices iname index)
     store)
   (rem-index! [store iname]
     (assert (get-index store iname))
-    (js-dissoc indices iname))
+    (js-dissoc indices iname)
+    store)
   (get-index [store iname]
     (js-lookup indices iname)))
     
@@ -116,46 +192,23 @@
   (NativeStore. (root-index root-fn) #js {} #js {} #js [] 1))
 
 (comment
-  (def test-store (native-store #(aget % "id")))
-  (p/add-index! test-store))
+  (def store (native-store #(aget % "id")))
+  (p/add-index! store :name (ordered-index :name compare))
+  (insert! store #js {:id 1 :name "Fred"})
+  (insert! store #js {:id 2 :name "Zoe"})
+  (insert! store #js {:id 3 :name "Apple"})
+  (insert! store #js {:id 4 :name "Flora"})
+  (insert! store #js {:id 5 :name "Flora"})
+  (println "Get by ID" (get store 1))
+  (println "Get by index" (-> (get-index store :name) (get "Flora"))))
 
-;;
-;; Indexes
-;; 
 
-(comment
-    
-(defn- scanner
-  ([f]
-     (fn [val] (f val) nil))
-  ([f comp-fn end]
-     (fn [val]
-       (if (comp-fn val end)
-         (do (f val) nil)
-         true))))
-
-(deftype AvlIndex [kf cf avl]
-  IIndex
-  (index! [idx obj]
-    (.add avl obj))
-  (unindex! [idx obj]
-    (.remove avl obj))
-  (key-fn [idx] kf)
-  IScannableIndex  
-  (comp-fn [idx] cf)
-  (-scan [idx f]
-    (.inOrderTraversal avl (scanner f)))
-  (-scan [idx f start]
-    (.inOrderTraversal avl (scanner f) start)))
-    
-(defn avl-index [key-fn comp-fn]
-  (avl/AvlIndex. key-fn comp-fn (avl/AvlTree (comp key-fn comp-fn))))
-  
 ;;
 ;; Read-only interface with consistency semantics
 ;; and cross references
 ;;
-
+(comment
+  
 (defprotocol IReference
   (resolve-ref [ref]))
 
@@ -182,4 +235,4 @@
 
 (pr-str (:test test))
 (pr-str (meta test))
-))
+)

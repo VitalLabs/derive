@@ -9,11 +9,13 @@
                  [figwheel "0.1.3-SNAPSHOT"]
                  [prismatic/schema "0.2.2"]
                  [reagent "0.4.2"]
+                 [sablono "0.2.18"]
                  [vitalreactor/om "0.6.3.1"]]
   :plugins [[lein-cljsbuild "1.0.3"]
             [lein-exec "0.3.3"]
             [lein-externs "0.1.3"]
             [lein-figwheel "0.1.3-SNAPSHOT"]
+            [clj-stacktrace "0.2.7"]
             [com.cemerick/clojurescript.test "0.2.2"]
             [com.cemerick/austin "0.1.4"]]
   :profiles
@@ -25,9 +27,9 @@
                         :output-dir "resources/public/js/out"
                         :optimizations :none
                         :pretty-print true
-                        :preamble      ["reagent/react.js"]
+                        :preamble ["templates/js/function_prototype_polyfill.js"]
                         :source-map true}}
-            
+
             #_{:id "test"
              :source-paths ["src" "test"]
              :notify-command ["scripts/run_tests.rb" :cljs.test/runner]
@@ -35,28 +37,33 @@
                         ;:output-dir "resources/public/js/out"
                         :optimizations :none
                         :pretty-print true
-                        :source-map true}}]
-          
+                        :source-map true
+                        :preamble ["templates/js/function_prototype_polyfill.js"]}} ]
+
 ;          :test-commands {"unit-tests" ["scripts/run_tests.rb" :runner]}
-          :repl-launch-commands {"phantom" ["phantomjs" "phantom/repl.js"]}
+          :repl-launch-commands {"phantom" ["phantomjs" "phantom/repl.js"]
+                                 "chrome" ["chrome"]}
           }
-         
+
          :repl-options {:init (println "To start the browser-repl, run:\n"
                                        "(browser-repl)")
+                        :port 4004
                         :caught clj-stacktrace.repl/pst+
                         :skip-default-init false}
-         
+
          :injections [(require '[cljs.repl.browser :as brepl]
                                '[cemerick.piggieback :as pb])
+                      (let [orig (ns-resolve (doto 'clojure.stacktrace require)
+                                            'print-cause-trace)
+                           new (ns-resolve (doto 'clj-stacktrace.repl require)
+                                           'pst)]
+                       (alter-var-root orig (constantly (deref new))))
                       (defn browser-repl []
                         (pb/cljs-repl :repl-env (brepl/repl-env :port 9000)))]
-         
+
          :figwheel {:http-server-root "public" ;; assumes "resources"
                     :server-port 3449
-                    :css-dirs ["resources/public/style/"]}
+                    :css-dirs ["resources/public/css/"]}
          }
 
    :release {}})
-
-         
-          

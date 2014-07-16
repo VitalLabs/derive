@@ -51,7 +51,7 @@
 ;; + ILookup
 (defprotocol IStore
   (insert! [store obj])  ;; shallow merge upsert of native objects
-  (delete! [store obj])) ;; delete, only need primary ID in submitted object
+  (delete! [store id])) ;; delete, only need primary ID in submitted object
 
 ;; CompFn(KeyFn(obj)) -> value, obj
 (defprotocol IIndex
@@ -63,7 +63,7 @@
   (comparator-fn [idx]))
 
 (defprotocol IScannable
-  (scan [idx f] [idx f start] [idx f start end] [idx f start end dir]))
+  (scan [idx f] [idx f start] [idx f start end]))
 
 (defprotocol IIndexedStore
   (add-index! [store name index])

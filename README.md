@@ -256,6 +256,38 @@ result can be returned.
 Calls to database query methods export a representation of the
 dependencies that query has on the database state.
 
+Workflow
+=================
+
+1) Start 'lein repl'
+   - Creates an nrepl endpoint for Emacs
+   - Creates a socket at localhost:9000 for the browser
+
+2) Start 'lein figwheel'
+   - Auto asset reloading
+
+3) Connect emacs to cider port exported by 'lein repl'
+
+4) Run '(browser-repl)'
+
+5) Load localhost:3449/index.html into a browser
+
+
+Orchestra Workflow Goals
+========================
+
+1) Live editing JS/CSS
+   - e.g. widgets file for Amelia and us in dev mode
+   - e.g. dev-noww full site editing of CSS/JS
+   - Ability to connect a REPL to this environment
+   
+2) Headless repl environment with the full code
+   - Connect from Emacs
+   - Meta-. navigation
+   - Developing new derive widgets
+   - C-x C-e eval optional
+   
+
 React Integration
 =================
 
