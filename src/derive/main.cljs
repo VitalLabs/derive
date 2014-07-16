@@ -16,13 +16,25 @@
 
 (def root-div (.getElementById js/document "app"))
 (defonce state (atom {:current 0}))
-(defonce db (store/native-store #(aget % "id")))
+(def db (store/native-store :id))
 
 (defn load-db []
-  (p/insert! db #js {:id 1 :text "Hi there."})
-  (p/insert! db #js {:id 2 :text "I'm cycling..."})
-  (p/insert! db #js {:id 3 :text "...through a series of messages."})
-  (p/insert! db #js {:id 4 :text "And then I repeat!"}))
+  (when (not (p/get-index db :text))
+    (p/add-index! db :text (store/ordered-index (store/field-key :text) compare)))
+  (when (not (p/get-index db :value))
+    (p/add-index! db :value-lt (store/ordered-index (store/field-key :int) compare)))
+  (when (not (p/get-index db :value2))
+    (p/add-index! db :value-gt (store/ordered-index (store/field-key :int) (comparator >))))
+  (p/insert! db #js {:id 1 :text "Hi there." :int 10})
+  (p/insert! db #js {:id 2 :text "I'm cycling..." :int 20})
+  (p/insert! db #js {:id 3 :text "...through a series of messages." :int 30})
+  (p/insert! db #js {:id 4 :text "And then I repeat!" :int 40})
+  #_(time
+     (do
+       (dotimes [i 5000]
+         (p/insert! db #js {:id (+ 10000 i) :text (str "entry-" (rand-int i))}))
+       (dotimes [i 5000]
+         (p/insert! db #js {:id (+ 20000 i) :int (rand-int i)})))))
 
 ;;
 ;; Derive renderable state
@@ -43,7 +55,7 @@
       (let [db (om/get-shared owner :db)]
         (html
          [:div
-          [:h2 "Om Application"]
+          [:h3 "Om Application"]
           [:p (derive-text db (inc (:current app)))]
           [:button {:on-click #(om/transact! app :current (inc-mod 4))} "Next"]])))))
 

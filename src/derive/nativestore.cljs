@@ -86,8 +86,8 @@
     idx)
   (unindex! [idx obj]
     (let [loc (goog.array.findIndex arry #(= obj %))]
-      (assert (>= loc 0))
-      (goog.array.removeAt arry loc))
+      (when (>= loc 0)
+        (goog.array.removeAt arry loc)))
     idx)
 
   p/IIndexedStore
@@ -144,13 +144,13 @@
       (when old
         (doseq [name names]
           (let [idx (aget indices name)]
-            (when ((key-fn idx) old)
+            (when-not (nil? ((key-fn idx) old))
               (unindex! idx old)))))
       (index! root obj)
       (let [new (get root key)]
         (doseq [name names]
           (let [idx (aget indices name)]
-            (when ((key-fn idx) new)
+            (when-not (nil? ((key-fn idx) new))
               (index! idx new))))
         (-notify-watches store oldref new)))
     store)
@@ -201,9 +201,21 @@
 (defn index-lookup [store index value]
   (-> (get-index store index) (get value)))
 
+(defn field-key [field]
+  (let [f (name field)]
+    (fn [obj]
+      (aget obj f))))
+
+(defn type-field-key [type field]
+  (let [t (name type)
+        f (name field)]
+    (fn [obj]
+      (when (= t (aget obj "type"))
+        (aget obj f)))))
+
 (comment
   (def store (native-store #(aget % "id")))
-  (p/add-index! store :name (ordered-index :name compare))
+  (p/add-index! store :name (ordered-index (field-key :name) compare))
   (insert! store #js {:id 1 :type "user" :name "Fred"})
   (insert! store #js {:id 2 :type "user" :name "Zoe"})
   (insert! store #js {:id 3 :type "user" :name "Apple"})
