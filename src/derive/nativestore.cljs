@@ -127,8 +127,10 @@
 (defn ordered-index [keyfn compfn]
   (BinaryIndex. keyfn compfn #js []))
 
-;; Placeholder for a native, indexed, mutable/transactional store
-(deftype NativeStore [root indices listeners txn-log ^:mutable txn-id]
+;; A native, indexed, mutable/transactional store
+;; - Always performs a merging upsert
+;; - Secondary index doesn't index objects for key-fn -> nil
+(deftype NativeStore [root indices listeners]
   ILookup
   (-lookup [store val]
     (-lookup store val nil))
@@ -154,13 +156,17 @@
       (when old
         (loop [i 0]
           (when-not (>= i ilen)
-            (unindex! (aget indices i) old)
+            (let [idx (aget indices i)]
+              (when ((key-fn idx) old)
+                (unindex! idx old)))
             (recur (inc i)))))
       (index! root obj)
       (let [new (get root key)]
         (loop [i 0]
           (when-not (>= i ilen)
-            (index! (aget indices i) new)
+            (let [idx (aget indices i)]
+              (when ((key-fn idx) new)
+                (index! idx new)))
             (recur (inc i))))))
     store)
   (delete! [store id]
@@ -187,20 +193,26 @@
 ;  (transact! [store f & args]
 ;    ;; With mutation tracking enabled?
 ;    (apply f store args)))
-
 (defn native-store [root-fn]
-  (NativeStore. (root-index root-fn) #js {} #js {} #js [] 1))
+  (NativeStore. (root-index root-fn) #js {} #js {}))
+
+(defn index-lookup [store index value]
+  (-> (get-index store index) (get value)))
 
 (comment
   (def store (native-store #(aget % "id")))
   (p/add-index! store :name (ordered-index :name compare))
-  (insert! store #js {:id 1 :name "Fred"})
-  (insert! store #js {:id 2 :name "Zoe"})
-  (insert! store #js {:id 3 :name "Apple"})
-  (insert! store #js {:id 4 :name "Flora"})
-  (insert! store #js {:id 5 :name "Flora"})
+  (insert! store #js {:id 1 :type "user" :name "Fred"})
+  (insert! store #js {:id 2 :type "user" :name "Zoe"})
+  (insert! store #js {:id 3 :type "user" :name "Apple"})
+  (insert! store #js {:id 4 :type "user" :name "Flora"})
+  (insert! store #js {:id 5 :type "user" :name "Flora"})
+  (insert! store #js {:id 6 :type "tracker" :measure 2700})
   (println "Get by ID" (get store 1))
-  (println "Get by index" (-> (get-index store :name) (get "Flora"))))
+  (println "Get by index" (-> (get-index store :name) (get "Flora")))
+  (let [a (array)]
+    (scan (get-index store :name) #(.push a (:id %)))
+    (println (js->clj a)))) ;; object #6 is not indexed!
 
 
 ;;
