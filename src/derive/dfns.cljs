@@ -4,32 +4,16 @@
 
 
 
-(defn wrap-reducible [native]
-  (if (satisfies? clojure.core/IReduce native) native
-      (reify
-        clojure.core/IReduce
-        (-reduce [_ f]
-          (loop [x 1 ret (aget native 0) len (alength native)]
-            (if (= x len) ret
-                (recur (inc x) (f ret (aget native x)) len))))
-        (-reduce [_ f start]
-          (loop [x 1 ret (f start (aget native 0)) len (alength native)]
-            (if (= x len) ret
-                (recur (inc x) (f ret (aget native x)) len)))))))
-
-
 (extend-protocol IReduce
   array
   (-reduce [native f]
-    (loop [x 1 ret (aget native 0) len (alength native)]
-      (if (= x len) ret
-          (recur (inc x) (f ret (aget native x)) len))))
+    (if (> (alength native) 0)
+      (areduce native i r (aget native 0) (f r (aget native i)))
+      native))
   (-reduce [native f start]
-    (loop [x 1 ret (f start (aget native 0)) len (alength native)]
-      (if (= x len) ret
-          (recur (inc x) (f ret (aget native x)) len)))))
-
-
+    (if (> (alength native) 0)
+      (areduce native i r (f start (aget native 0)) (f r (aget native i)))
+      native)))
 
 (defn map
   ([f coll]
