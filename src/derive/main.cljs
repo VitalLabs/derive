@@ -2,6 +2,7 @@
   (:require [figwheel.client :as fw :include-macros true]
             [om.core :as om :include-macros true]
             [sablono.core :as html :refer-macros [html]]
+            [clojure.core.reducers :as r]
             [derive.repl :as repl]
             [derive.tools :as tools]
             [derive.protocols :as p]
@@ -16,7 +17,7 @@
 
 (def root-div (.getElementById js/document "app"))
 (defonce state (atom {:current 0}))
-(def db (store/native-store :id))
+(defonce db (store/native-store :id))
 
 (defn load-db []
   (when (not (p/get-index db :text))
@@ -40,8 +41,18 @@
 ;; Derive renderable state
 ;;
 
+(defn derive-count [db id]
+  (println "Computing Count")
+  (let [c (atom 0)]
+    (p/scan (p/get-index db :value-lt) #(swap! c inc) 0 (* id 10))
+    @c))
+
 (defn derive-text [db id]
-  (:text (db id)))
+;  (let [tracker nil #_(default-tracker)]
+;    (fn [db id]
+;      (binding [*tracker* nil #_(tracker db [id] *tracker*)]
+        (println "Computing Text")
+        (str (:text (db id))  " [" (derive-count db id) "]"))
 
 (defn inc-mod [modulus]
   (fn [old]

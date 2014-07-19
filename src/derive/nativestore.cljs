@@ -121,8 +121,8 @@
 ;; - Secondary index doesn't index objects for key-fn -> nil
 (deftype NativeStore [root indices listeners]
   ILookup
-  (-lookup [store val]
-    (-lookup store val nil))
+  (-lookup [store id]
+    (-lookup store id nil))
   (-lookup [store id not-found]
     (-lookup root id not-found))
 
@@ -131,7 +131,7 @@
 
   IFn
   (-invoke [store k]
-    (-lookup store k))
+    (-lookup store k nil))
   (-invoke [store k not-found]
     (-lookup store k not-found))
 
