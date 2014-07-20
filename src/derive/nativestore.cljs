@@ -1,11 +1,51 @@
 (ns derive.nativestore
   (:require [goog.object :as obj]
-            [purnam.native]
-            [purnam.native.functions :refer [js-lookup js-assoc js-dissoc js-merge js-map
-                                             js-copy]]
-            [derive.protocols :as p :refer [index! unindex! key-fn comparator-fn scan
-                                            insert! delete! add-index! rem-index! get-index]]))
-             
+            [derive.deps :as deps]
+            [purnam.native.functions :refer [js-lookup js-assoc js-dissoc
+                                             js-merge js-map js-copy]]))
+
+;;
+;; Store protocols
+;; ============================
+
+;; + ILookup
+(defprotocol IStore
+  (insert! [store obj])  ;; shallow merge upsert of native objects
+  (delete! [store id])) ;; delete, only need primary ID in submitted object
+
+;; CompFn(KeyFn(obj)) -> value, obj
+(defprotocol IIndex
+  (key-fn [idx])
+  (index! [idx obj])
+  (unindex! [idx obj]))
+
+(defprotocol ISortedIndex
+  (comparator-fn [idx]))
+
+(defprotocol IScannable
+  (-get-cursor [idx] [idx start] [idx start end]))
+
+(defprotocol IIndexedStore
+  (add-index! [store name index])
+  (rem-index! [store name])
+  (get-index  [store name]))
+
+(defprotocol ITransactionalStore
+  (transact! [store fn args]))
+
+;;
+;; A reference wraps a lookup into a store
+;; Objects implementing ILookup can test for a
+;; IReference and dereference it.
+;;
+  
+(defprotocol IReference
+  (resolve-ref [ref]))
+
+(deftype NativeReference [store id]
+  IReference
+  (resolve-ref [_] (store id)))
+
 ;;
 ;; Native object store
 ;;
@@ -41,7 +81,7 @@
   ICounted
   (-count [idx] (alength (js-keys hashmap)))
 
-  p/IIndex
+  IIndex
   (key-fn [idx] keyfn)
   (index! [idx obj]
     (let [key (keyfn obj)
@@ -51,8 +91,20 @@
     (let [key (keyfn obj)]
       (js-dissoc hashmap key obj))))
 
-(defn root-index [keyfn]
-  (HashIndex. keyfn #js {}))
+(defn root-index []
+  (HashIndex. #(aget % "id") #js {}))
+
+;; Return a cursor for walking a range of the index
+(deftype Cursor [idx start end ^:mutable valid?]
+  IReduce
+  (-reduce [this f]
+    (-reduce this f (f)))
+  (-reduce [this f init]
+    (let [a (.-arry idx)]
+      (loop [i start ret init]
+        (if (< i end)
+          (recur (inc i) (f ret (aget a i)))
+          ret)))))
 
 ;; KV index using binary search/insert/remove on array
 ;; - Always inserts new objects in sorted order
@@ -76,7 +128,7 @@
   (-invoke [idx k not-found]
     (-lookup idx k not-found))
 
-  p/IIndex
+  IIndex
   (key-fn [idx] keyfn)
   (index! [idx obj]
     (let [loc (goog.array.binarySearch arry obj #(compfn (keyfn %1) (keyfn %2)))]
@@ -90,31 +142,25 @@
         (goog.array.removeAt arry loc)))
     idx)
 
-  p/IIndexedStore
+  IIndexedStore
   (comparator-fn [idx] compfn)
 
-  p/IScannable
-  (scan [idx f]
-    (dotimes [i (alength arry)]
-      (f (aget arry i))))
-  (scan [idx f start]
+  IScannable
+  (-get-cursor [idx]
+    (Cursor. idx 0 (alength (.-arry idx)) true))
+  (-get-cursor [idx start]
     (let [head (goog.array.binarySearch arry start #(compfn %1 (keyfn %2)))
           head (if (>= head 0) head (- (inc head)))]
-      (dotimes [i (- (alength arry) head)]
-        (f (aget arry (+ i head))))))
-  (scan [idx f start end]
+      (Cursor. idx start (alength (.-arry idx)) true)))
+  (-get-cursor [idx start end]
     (let [head (goog.array.binarySearch arry start #(compfn %1 (keyfn %2)))
           head (if (>= head 0) head (- (inc head)))
           tail (goog.array.binarySearch arry end #(compfn %1 (keyfn %2)))
           tail (if (>= tail 0) tail (- (inc tail)))]
-      (loop [i head]
-        (when-not (>= i tail)
-          (f (aget arry i))
-          (recur (inc i)))))))
+      (Cursor. idx head tail true))))
 
 (defn ordered-index [keyfn compfn]
   (BinaryIndex. keyfn compfn #js []))
-
 
 ;; A native, indexed, mutable/transactional store
 ;; - Always performs a merging upsert
@@ -135,7 +181,7 @@
   (-invoke [store k not-found]
     (-lookup store k not-found))
 
-  p/IStore
+  IStore
   (insert! [store obj]
     (let [key ((key-fn root) obj)
           names (js-keys indices)
@@ -164,7 +210,7 @@
       (unindex! root old))
     store)
 
-  p/IIndexedStore
+  IIndexedStore
   (add-index! [store iname index]
     (assert (not (get-index store iname)))
     (js-assoc indices iname index)
@@ -189,17 +235,30 @@
     (js-dissoc listeners key)
     store))
   
-
-    
+ 
 ;  ITransactionalStore
 ;  (transact! [store f & args]
 ;    ;; With mutation tracking enabled?
 ;    (apply f store args)))
-(defn native-store [root-fn]
-  (NativeStore. (root-index root-fn) #js {} #js {}))
+(defn native-store []
+  (NativeStore. (root-index) #js {} #js {}))
 
-(defn index-lookup [store index value]
-  (-> (get-index store index) (get value)))
+;;
+;; External interface
+;;
+
+(defn fetch 
+  ([store key]
+     (get store key))
+  ([store index key]
+     (-> (get-index store index) (get key))))
+
+(defn cursor
+  "Walk the entire store, or an index"
+  ([store]
+     (apply -get-cursor store))
+  ([store index & args]
+     (apply -get-cursor (get-index store index) args)))
 
 (defn field-key [field]
   (let [f (name field)]
@@ -214,8 +273,8 @@
         (aget obj f)))))
 
 (comment
-  (def store (native-store #(aget % "id")))
-  (p/add-index! store :name (ordered-index (field-key :name) compare))
+  (def store (native-store))
+  (add-index! store :name (ordered-index (field-key :name) compare))
   (insert! store #js {:id 1 :type "user" :name "Fred"})
   (insert! store #js {:id 2 :type "user" :name "Zoe"})
   (insert! store #js {:id 3 :type "user" :name "Apple"})
@@ -224,41 +283,7 @@
   (insert! store #js {:id 6 :type "tracker" :measure 2700})
   (println "Get by ID" (get store 1))
   (println "Get by index" (-> (get-index store :name) (get "Flora")))
-  (let [a (array)]
-    (scan (get-index store :name) #(.push a (:id %)))
-    (println (js->clj a)))) ;; object #6 is not indexed!
+  (println (js->clj (r/reduce (cursor store :name) (d/map :id)))) ;; object #6 is not indexed!
+ 
 
 
-;;
-;; Read-only interface with consistency semantics
-;; and cross references
-;;
-(comment
-  
-(defprotocol IReference
-  (resolve-ref [ref]))
-
-(deftype Reference [store iname id]
-  IReference
-  (resolve-ref [_] (get-in-idx store iname id)))
-
-(deftype Entity [db ^long txnid ^object obj])
-
-(extend-type Entity
-  ILookup
-  (-lookup
-    ([e k]
-       (aget (.-obj e) (name k)))
-    ([e k not-found]
-       (let [s (name k)]
-         (if (goog.object.containsKey (.-obj e) s)
-           (aget (.-obj e) s)
-           not-found))))
-  IDeref
-  (-deref [e] (.-obj e)))
-
-(def test (Entity. nil 1 #js {:test 2}))
-
-(pr-str (:test test))
-(pr-str (meta test))
-)

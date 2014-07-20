@@ -1,5 +1,25 @@
-(ns derive.core
-  (:require-macros [derive.core])) ; :refer [defn-derive]]))
+(ns derive.deps)
+
+;; Dependency Tracking
+;; ============================
+
+;; Implemented by function and component caches
+(defprotocol IDependencyTracker
+  (reset-dependencies [this])
+  (record-dependencies [this params db dep])
+  (satisfied-dependencies? [this params new-dbs])
+  (record-value [this params value])
+  (derived-value [this params]))
+
+;; Implemented by a DB reference
+(defprotocol ITrackDependencies
+  (dependencies [this query params])
+  (changes [this txn deps]))
+
+;; Passed to dependency trackers during queries via record-dependency
+(defprotocol IDependencySet
+  (merge-dependencies [this deps])
+  (dependency-match? [this changes]))
 
 (def ^{:dynamic true :private false} *dependency-tracker* nil)
 
@@ -7,6 +27,7 @@
 ;; Simple tracker
 ;;
 
+(comment
 (defrecord DefaultTracker [cache]
   IDependencyTracker
   (reset-dependencies [_]
@@ -33,7 +54,7 @@
 
 (defn empty-tracker []
   (DefaultTracker. (atom {})))
-
+)
 
 
 ;; Examples
@@ -60,11 +81,4 @@
                (let [res (do ~@body)]
                  (card* app task-id)))))))))
 
-
-
-
-
-
   
-
-

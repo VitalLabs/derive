@@ -1,9 +1,18 @@
 Derive
 ======
 
-Derive is a kind of React library for data.  It simplifies the
-derivation of data from an immutable specification coupled to a
-client-side index / database.
+One of the current (Summer 2014) trends in Functional UI design in the
+Clojurescript community is exploiting immutable state to enable highly
+efficient updating of a user interface in response to change.  The
+typical implementation pattern is a nested set of maps stored in a
+single Atom.  The benefits of this organization are many:
+checkpointable state, etc  (TBD)
+
+Derive is a dependency tracking framework  complements React-style
+reactive interfaces.  It systematizes the derivation of data from a
+transactional store by exposing a protocol that enables a deriving
+function to capture the subset of values in the immutable specification coupled to a client-side index /
+database.
 
 Initial support is targeted for use with a front-end like React/Om and
 Datascript, although it is intended to be a more general design
@@ -309,8 +318,8 @@ determine where and how to update system state by plugging into
 
 TODO Spike 1 - Semantics
 ================
-(DEBUGGING) 1) Simplest possible native data store (heap indexed by :id) 
-(DEBUGGING) 2) Simplest possible value / range queries (simple indexing) 
+x 1) Simplest possible native data store (heap indexed by :id)
+x 2) Simplest possible value / range queries (simple indexing) 
 3) Pipe all models from service layer to native store
 4) Build derive functions that always recompute; force om models to always re-render
 5) Develop derive functions for current mobile timeline (simple functions only)
