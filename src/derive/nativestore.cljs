@@ -57,6 +57,11 @@
   (-pr-writer [native writer opts]
     (-write writer (str "#ref [" id "]")))
 
+  IEquiv
+  (-equiv [ref other]
+    (and (= store (.-store other))
+         (= id (.-id other))))
+  
   IReference
   (resolve-ref [_] (store id))
   (reference-id [_] id)
