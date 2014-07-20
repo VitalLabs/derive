@@ -34,21 +34,121 @@
   (transact! [store fn args]))
 
 ;;
+;; Instance protocols
+;; ============================
+
+(def ^{:doc "Inside a transaction?"}
+  *transaction* nil)
+
+(def ^{:doc "The dependency tracker context to notify of object operations"}
+  *tracker* nil)
+
 ;; A reference wraps a lookup into a store
 ;; Objects implementing ILookup can test for a
 ;; IReference and dereference it.
-;;
-  
+
 (defprotocol IReference
-  (resolve-ref [ref]))
+  (resolve-ref [ref])
+  (reference-id [ref])
+  (reference-db [ref]))
 
 (deftype NativeReference [store id]
+  IPrintWithWriter
+  (-pr-writer [native writer opts]
+    (-write writer (str "#ref [" id "]")))
+
   IReference
-  (resolve-ref [_] (store id)))
+  (resolve-ref [_] (store id))
+  (reference-id [_] id)
+  (reference-db [_] store))
+
+;; Mutation can only be done on Natives in
+;; a transaction or on copies of Natives generated
+;; via assoc, etc. or store/clone
+
+(deftype Native []
+  IPrintWithWriter
+  (-pr-writer [native writer opts]
+    (-write writer "#native ")
+    (print-map
+     (->> (js-keys native)
+          (keep (fn [k]
+                  (let [v (aget native k)
+                        k (keyword k)]
+                    (when-not (or (fn? v)
+                                  (#{:cljs$lang$protocol_mask$partition0$ :cljs$lang$protocol_mask$partition1$} k))
+                      [k v])))))
+     pr-writer writer opts))
+
+  ICounted
+  (-count [native]
+    (.length (js-keys native)))
+
+  ILookup
+  (-lookup [native k]
+    (let [key (if (keyword? k) (name k) k)
+          res (aget native key)]
+      (if (satisfies? IReference res)
+        (resolve-ref res)
+        res)))
+  (-lookup [native k not-found]
+    (let [key (if (keyword? k) (name k) k)
+          res (aget native key)]
+      (cond (nil? res) not-found
+            (satisfies? IReference res) (resolve-ref res)
+            :default res)))
+
+  ITransientAssociative
+  (-assoc! [native k v]
+    (aset native (if (keyword? k) (name k) k) v)
+    native)
+
+  ITransientCollection
+  (-conj! [native [k v]]
+    (aset native (if (keyword? k) (name k) k) v)
+    native)
+  
+  ITransientMap
+  (-dissoc! [native k]
+    (cljs.core/js-delete native (if (keyword? k) (name k) k))
+    native)
+
+  IAssociative
+  (-assoc [native k v]
+    (let [new (goog.object.clone native)]
+      (aset new (if (keyword? k) (name k) k) v)
+      new))
+  
+  IMap
+  (-dissoc [native k]
+    (let [new (goog.object.clone native)]
+      (cljs.core/js-delete new (if (keyword? k) (name k) k))
+      new))
+    
+  ICollection
+  (-conj [native [k v]]
+    (let [new (goog.object.clone native)]
+      (aset new (if (keyword? k) (name k) k) v)
+      new)))
+
+(defn to-native
+  "Copying version of to-native"
+  [jsobj]
+  (let [native (Native.)]
+    (goog.object.forEach jsobj (fn [v k] (assoc! native k v)))
+    native))
+
+(comment
+  (defn fast-to-native
+    "Promotion version of to-native, doesn't work yet"
+    [jsobj]
+    (set! (.-constructor jsobj) Native)
+    ;; TODO: Copy impls?
+    ))
 
 ;;
 ;; Native object store
-;;
+;; ============================
 
 (defn upsert-merge
   ([o1 o2]
@@ -283,7 +383,7 @@
   (insert! store #js {:id 6 :type "tracker" :measure 2700})
   (println "Get by ID" (get store 1))
   (println "Get by index" (-> (get-index store :name) (get "Flora")))
-  (println (js->clj (r/reduce (cursor store :name) (d/map :id)))) ;; object #6 is not indexed!
+  (println (js->clj (r/reduce (cursor store :name) (d/map :id))))) ;; object #6 is not indexed!
  
 
 

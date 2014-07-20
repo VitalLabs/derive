@@ -1,6 +1,5 @@
 (ns derive.dfns
-  (:require [clojure.core.reducers :as r]
-            [purnam.native])
+  (:require [clojure.core.reducers :as r])
   (:refer-clojure :exclude [filter map mapcat count remove]))
 
 (extend-protocol IReduce
