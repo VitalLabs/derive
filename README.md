@@ -50,9 +50,8 @@ Om 0.1.5 State Management
 - Changes to giant state models can be hard to reason about in practice
 - Sometimes hard to know what is a cursor value and what is not
 
-
-Derive Benefits
-===============
+Benefits
+========
 
 - Localize the logic specific to deriving and computing "renderable
   models" to the components that will consume them (instead of in the
@@ -64,11 +63,11 @@ Derive Benefits
 - De-couple database schemas from the specifics of UI rendering functions
   (Use simple data structures, defined by schemas, to drive rendering and
   not to care about the extra cost of computing convenience representations)
-- Provide cheap comparisons as to whether a derived model needs to be recomputed,
-  and the respective UI update, given side effects to the database.
-- Support dynamic programming, only derive a resulting model once unless
-  preconditions have changed, but it is cheap to call the generating
-  methods many times.
+- Enable cheap evaluation whether to update the model, and update any active
+  and dependent UI given a side effect to the database.
+- Support dynamic programming: only derive a resulting model once unless
+  preconditions have changed by ensuring it is cheap to call the generating
+  methods many times in succession.
 
 Longer term goals
 
@@ -157,19 +156,18 @@ Show Om ShouldComponentUpdate here
 NativeStore, the Native Type, Cursors, and References
 =====================================================
 
-NativeStore provides a simple, explicitly indexed in-memory database
-for managing native objects.  It is efficient, transactional, and
-supports emulation of immutability through dependency tracking.  It
-directly supports the ITrackDependencies interface required by Derive
-methods to invalidate results that are likely to change given the
-prior transaction.  The store does not currently maintain historical
-versions or a transaction log, but that is under consideration for
-future versions to support efficient snapshotting and restore of
-system state.
+We've bundled NativeStore with Derive.  NativeStore is a simple,
+explicitly indexed in-memory database for managing native objects.  It
+is efficient, transactional, and supports emulation of immutability
+through the Derive dependency tracking protocol.  The store does not
+currently maintain historical versions or a transaction log, future
+versions are likely to support these features to enable efficient
+snapshotting and restoring of system state.
 
-All objects added to the store must be of type Native.  Native objects
-support the usual countable, assocable, transient, and lookup
-interfaces.  Standard assoc operations return copies.
+All objects added to the store must be of type
+derive.nativestore.Native.  Native objects support the usual
+countable, assocable, transient, and lookup interfaces.  Standard
+assoc operations return _shallow_ copies of data objects.
 
 Native objects stored in the store are marked read-only on insertion.
 After a copy operation, these objects can be freely mutated by
