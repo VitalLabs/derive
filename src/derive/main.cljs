@@ -1,13 +1,14 @@
 (ns derive.main
-  (:require [figwheel.client :as fw :include-macros true]
+  (:require-macros [derive.deps :refer [defn-derived]])
+  (:require [clojure.core.reducers :as r]
+            [figwheel.client :as fw :include-macros true]
             [om.core :as om :include-macros true]
             [sablono.core :as html :refer-macros [html]]
-            [clojure.core.reducers :as r]
             [derive.repl :as repl]
-            [derive.dfns :as d]
+            [derive.debug-level :as debug-level]
             [derive.deps :as deps :include-macros true]
             [derive.nativestore :as store]
-            [derive.debug-level :as debug-level]))
+            [derive.dfns :as d]))
 
 (enable-console-print!)
 
@@ -47,7 +48,7 @@
   id)
 
 ;; TODO: Still having build errors
-#_(deps/defn-derived derive-count2
+(defn-derived derive-count2
 ;  "Somewhat artificial example of a processing pipeline with a sort step"
   [db id]
   (println "Computing Count")

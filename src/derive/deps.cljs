@@ -165,7 +165,7 @@
     (set! listeners (update-in listeners [deps] disj listener))))
 
 (defn create-derive-fn [dfn lfn]
-  dfn lfn #{} (derive.deps/default-cache) #{})
+  (DeriveFn. dfn lfn #{} (derive.deps/default-cache) #{}))
   
 
 ;; Ensure we're subscribed to stores we encounter
