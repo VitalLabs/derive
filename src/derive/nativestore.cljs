@@ -41,10 +41,6 @@
        :dynamic true}
   *transaction* nil)
 
-(def ^{:doc "The dependency tracker context to notify of object operations"
-       :dynamic true}
-  *tracker* nil)
-
 ;; A reference wraps a lookup into a store
 ;; Objects implementing ILookup can test for a
 ;; IReference and dereference it.
