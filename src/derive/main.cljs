@@ -26,10 +26,14 @@
     (store/add-index! db :value-lt (store/ordered-index (store/field-key :int) compare)))
   (when (not (store/get-index db :value-gt))
     (store/add-index! db :value-gt (store/ordered-index (store/field-key :int) (comparator >))))
-  (store/insert! db #js {:id 1 :text "Hi there." :int 10})
-  (store/insert! db #js {:id 2 :text "I'm cycling..." :int 20})
-  (store/insert! db #js {:id 3 :text "...through a series of messages." :int 30})
-  (store/insert! db #js {:id 4 :text "And then I repeat!" :int 40})
+  (store/insert! db #js {:id 1 :text "Hi there." :int 10
+                         :next (store/NativeReference. db 2)})
+  (store/insert! db #js {:id 2 :text "I'm cycling..." :int 20
+                         :next (store/NativeReference. db 3)})
+  (store/insert! db #js {:id 3 :text "...through a series of messages." :int 30
+                                    :next (store/NativeReference. db 4)})
+  (store/insert! db #js {:id 4 :text "And then I repeat!" :int 40
+                                    :next (store/NativeReference. db 1)})
   #_(time
      (do
        (dotimes [i 5000]

@@ -31,16 +31,18 @@
   (get-index  [store name]))
 
 (defprotocol ITransactionalStore
-  (transact! [store fn args]))
+  (-transact! [store f args]))
 
 ;;
 ;; Instance protocols
 ;; ============================
 
-(def ^{:doc "Inside a transaction?"}
+(def ^{:doc "Inside a transaction?"
+       :dynamic true}
   *transaction* nil)
 
-(def ^{:doc "The dependency tracker context to notify of object operations"}
+(def ^{:doc "The dependency tracker context to notify of object operations"
+       :dynamic true}
   *tracker* nil)
 
 ;; A reference wraps a lookup into a store
@@ -63,7 +65,7 @@
          (= id (.-id other))))
   
   IReference
-  (resolve-ref [_] (store id))
+  (resolve-ref [_] (get store id))
   (reference-id [_] id)
   (reference-db [_] store))
 
@@ -71,7 +73,13 @@
 ;; a transaction or on copies of Natives generated
 ;; via assoc, etc. or store/clone
 
-(deftype Native []
+(defprotocol IReadOnly
+  (-read-only? [_]))
+
+(deftype Native [^:mutable __ro]
+  IReadOnly
+  (-read-only? [_] __ro)
+
   IPrintWithWriter
   (-pr-writer [native writer opts]
     (-write writer "#native ")
@@ -81,7 +89,7 @@
                   (let [v (aget native k)
                         k (keyword k)]
                     (when-not (or (fn? v)
-                                  (#{:cljs$lang$protocol_mask$partition0$ :cljs$lang$protocol_mask$partition1$} k))
+                                  (#{:cljs$lang$protocol_mask$partition0$ :cljs$lang$protocol_mask$partition1$ :__ro} k))
                       [k v])))))
      pr-writer writer opts))
 
@@ -105,16 +113,22 @@
 
   ITransientAssociative
   (-assoc! [native k v]
+    (when (and (-read-only? native) (not *transaction*))
+      (throw (js/Error. "Cannot mutate store values outside transact!: ")))
     (aset native (if (keyword? k) (name k) k) v)
     native)
 
   ITransientCollection
   (-conj! [native [k v]]
+    (when (and (-read-only? native) (not *transaction*))
+      (throw (js/Error. "Cannot mutate store values outside transact!: ")))
     (aset native (if (keyword? k) (name k) k) v)
     native)
   
   ITransientMap
   (-dissoc! [native k]
+    (when (and (-read-only? native) (not *transaction*))
+      (throw (js/Error. "Cannot mutate store values outside transact!: ")))
     (cljs.core/js-delete native (if (keyword? k) (name k) k))
     native)
 
@@ -139,7 +153,7 @@
 (defn to-native
   "Copying version of to-native"
   [jsobj]
-  (let [native (Native.)]
+  (let [native (Native. false)]
     (goog.object.forEach jsobj (fn [v k] (assoc! native k v)))
     native))
 
@@ -288,22 +302,29 @@
 
   IStore
   (insert! [store obj]
-    (let [key ((key-fn root) obj)
-          names (js-keys indices)
-          old (get root key)
-          oldref (js-copy old)]
-      (when old
-        (doseq [name names]
-          (let [idx (aget indices name)]
-            (when-not (nil? ((key-fn idx) old))
-              (unindex! idx old)))))
-      (index! root obj)
-      (let [new (get root key)]
-        (doseq [name names]
-          (let [idx (aget indices name)]
-            (when-not (nil? ((key-fn idx) new))
-              (index! idx new))))
-        (-notify-watches store oldref new)))
+    (let [obj (if (= (type obj) Native)
+                (do (set! (.-__ro obj) true) obj)
+                (let [native (to-native obj)]
+                  (set! (.-__ro native) true)
+                  native))]
+      (let [key ((key-fn root) obj)
+            names (js-keys indices)
+            old (get root key)
+            oldref (when old (js-copy old))]
+        (when old
+          (doseq [name names]
+            (let [idx (aget indices name)]
+              (when-not (nil? ((key-fn idx) old))
+                (unindex! idx old)))))
+        (index! root obj) ;; merging upsert
+        (let [new (get root key)]
+          (doseq [name names]
+            (let [idx (aget indices name)]
+              (when-not (nil? ((key-fn idx) new))
+                (index! idx new))))
+          (if *transaction*
+            (.push *transaction* #js [:insert oldref new])
+            (-notify-watches store oldref #js [:insert new])))))
     store)
   (delete! [store id]
     (assert (contains? root id) "Exists")
@@ -312,7 +333,10 @@
         (let [idx (aget indices name)]
           (when ((key-fn idx) old)
             (unindex! idx old))))
-      (unindex! root old))
+      (unindex! root old)
+      (if *transaction*
+        (.push *transaction* #js [:delete old])
+        (-notify-watches store old #js [:delete])))
     store)
 
   IIndexedStore
@@ -338,16 +362,19 @@
     store)
   (-remove-watch [store key]
     (js-dissoc listeners key)
-    store))
+    store)
   
- 
-;  ITransactionalStore
-;  (transact! [store f & args]
-;    ;; With mutation tracking enabled?
-;    (apply f store args)))
+  ITransactionalStore
+  (-transact! [store f args]
+    (binding [*transaction* #js []]
+      (apply f store args))
+    store))
+
 (defn native-store []
   (NativeStore. (root-index) #js {} #js {}))
 
+(defn transact! [store f & args]
+  (-transact! store f args))
 ;;
 ;; External interface
 ;;

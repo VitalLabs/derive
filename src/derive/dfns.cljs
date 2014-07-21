@@ -1,5 +1,6 @@
 (ns derive.dfns
-  (:require [clojure.core.reducers :as r])
+  (:require [clojure.core.reducers :as r]
+            [purnam.native])
   (:refer-clojure :exclude [filter map mapcat count remove]))
 
 (extend-protocol IReduce
@@ -38,7 +39,7 @@
      (reduce #(inc %1) 0 coll)))
 
 (defn reduce->>
-  [coll comb & forms]
+  [comb coll & forms]
   (r/reduce comb ((apply comp (reverse forms)) coll)))
 
 (defn reducec->>
