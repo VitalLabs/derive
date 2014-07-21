@@ -45,10 +45,17 @@
 ;; Derive renderable state
 ;;
 
-(defn derive-count [db id]
+(defn derive-count
+  "Somewhat artificial example of a processing pipeline with a sort step"
+  [db id]
   (println "Computing Count")
-  (-> (store/cursor db :value-lt 0 (* id 10))
-      (d/reduce->> + (d/map :int) (d/filter even?) (d/map inc))))
+  (->> (store/cursor db :value-lt 0 (* id 10))
+       (r/map :int)
+       (r/filter even?)
+       (r/map inc)
+       (d/reducec->>)
+       (d/sort (comparator >))
+       (reduce + 0)))
 
 (defn derive-text [db id]
 ;  (let [tracker nil #_(default-tracker)]

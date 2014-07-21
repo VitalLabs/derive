@@ -1,7 +1,7 @@
 (ns derive.dfns
   (:require [clojure.core.reducers :as r]
             [purnam.native])
-  (:refer-clojure :exclude [filter map mapcat count remove]))
+  (:refer-clojure :exclude [filter map mapcat count remove sort sort-by]))
 
 (extend-protocol IReduce
   array
@@ -39,12 +39,22 @@
      (reduce #(inc %1) 0 coll)))
 
 (defn reduce->>
-  [comb coll & forms]
-  (r/reduce comb ((apply comp (reverse forms)) coll)))
+  [coll & forms]
+  (r/reduce (last forms) ((apply comp (reverse (butlast forms))) coll)))
 
 (defn reducec->>
   [coll & forms]
-  (r/reduce -conj! #js [] ((apply comp (reverse forms)) coll)))
+  (if (> (count forms) 0)
+    (r/reduce -conj! #js [] ((apply comp (reverse forms)) coll))
+    (r/reduce -conj! #js [] coll)))
+
+(defn sort
+  ([coll] (.sort coll compare))
+  ([comp coll] (.sort coll comp)))
+
+(defn sort-by
+  ([keyfn coll] (.sort coll #(compare (keyfn %1) (keyfn %2))))
+  ([keyfn comp coll] (.sort coll #(comp (keyfn %1) (keyfn %2)))))
 
 
 ;;
