@@ -161,8 +161,72 @@ We can have stream derivation functions that render the latest result
 of a long-running process so long as the process implements the
 derivation protocol.  
 
-Usage
-=====
+NativeStore, the Native Type, Cursors, and References
+=====================================================
+
+NativeStore provides a simple, explicitly indexed in-memory database
+for managing native objects.  It is efficient, transactional, and
+supports emulation of immutability through dependency tracking.  It
+directly supports the ITrackDependencies interface required by Derive
+methods to invalidate results that are likely to change given the
+prior transaction.  The store does not currently maintain historical
+versions or a transaction log, but that is under consideration for
+future versions to support efficient snapshotting and restore of
+system state.
+
+All objects added to the store must be of type Native.  Native objects
+support the usual countable, assocable, transient, and lookup
+interfaces.  Standard assoc operations return copies.
+
+Native objects stored in the store are marked read-only on insertion.
+After a copy operation, these objects can be freely mutated by
+downstream code.  The original object can be updated by calling
+insert! directly or within a transaction body (to batch up changes and
+ensure database consistency during a transaction).
+
+We provide a Reference type to simplify modeling state with graph-like
+or relational structures.  When accessing a Native attribute, if the
+returned value implements the IReference protocol, the reference is
+unpacked and the value returned is the read-only underlying native
+instance referenced.  This is implemented as a deftype which maintains
+a reference to the store value and the root ID to lookup ("id").
+
+The state of the store is modelled as a heap indexed by the value in
+the "id" slot with zero or more indices on values of the objects
+accessed via NativeCursor values.  The NativeCursor type currently is only
+compatible with the reducers library via IReduce.  To do things like
+sorting, a reducer chain should return a fresh array.  The derive.dfns
+namespace contains various helper methods for working with Cursors,
+reducers, and native arrays.
+
+The immutable abstraction is not currently as rigorously enforced as
+it is in other parts of the Clojure ecosystem (Datomic, etc).  Some
+things to note:
+
+- Native objects may not be mutated outside transactions unless they are
+  first copied.  This is to inhibit side effects to the DB outside of transaction
+  functions and insert!/remove!.
+- It is currently an error to mutate a database object within a transaction function
+  without calling insert! to update the indices.
+- Object identity is retained across object boundaries, but code
+  should not currently depend identity or '=' holding across transactions.
+- Database cursors are also invalidated by transactions.  There are currently
+  no checks for cursor invalidation, so it is best to use them in environments
+  where cursors have finite extent.
+- Conventions are only enforced if you stick to clojure interfaces.
+  aget, aset, and direct member access bypass reference resolution,
+  read-only enforcemenet, etc.  However, if you kow what you are doing
+  you can still access values using constructs like (aget native
+  "field") and get near-optimal read performance on natives.
+
+- Use NativeStore responsibly.  We emphasized maximal performance,
+  decent flexiblity, with only a modicum of safety.  Safety emerges
+  from proper use of convention.
+
+All these tradeoffs may be reconsidered in future revisions of the
+NativeStore and NativeStore should be considered at an Alpha level of
+completeness.
+
 
 Design
 ======
