@@ -89,7 +89,7 @@
                   (let [v (aget native k)
                         k (keyword k)]
                     (when-not (or (fn? v)
-                                  (#{:cljs$lang$protocol_mask$partition0$ :cljs$lang$protocol_mask$partition1$ :__ro} k))
+                                  (#{:cljs$lang$protocol_mask$partition0$ :cljs$lang$protocol_mask$partition1$ :__ro :derive$nativestore$IReadOnly$} k))
                       [k v])))))
      pr-writer writer opts))
 
