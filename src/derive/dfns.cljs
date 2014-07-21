@@ -1,36 +1,40 @@
 (ns derive.dfns
-  (:require [clojure.core.reducers :as r]
-            [purnam.native])
+  (:require [clojure.core.reducers :as r])
   (:refer-clojure :exclude [filter map mapcat count remove sort sort-by]))
 
 (extend-protocol IReduce
   array
-  (-reduce [native f]
-    (areduce native i r (f) (f r (aget native i))))
-  (-reduce [native f start]
-    (areduce native i r (f start) (f r (aget native i)))))
+  (-reduce [coll f]
+    (areduce coll i r (f) (f r (aget coll i))))
+  (-reduce [coll f start]
+    (areduce coll i r start (f r (aget coll i)))))
+
+(defn js-conj
+  ([] #js [])
+  ([val] #js [val])
+  ([arry val] (do (.push arry val) arry)))
 
 (defn map
   ([f coll]
-     (r/reduce -conj! #js [] (r/map f coll)))
+     (r/reduce js-conj #js [] (r/map f coll)))
   ([f]
      (r/map f)))
 
 (defn mapcat
   ([f coll]
-     (r/reduce -conj! #js [] (r/mapcat f coll)))
+     (r/reduce js-conj #js [] (r/mapcat f coll)))
   ([f]
      (r/mapcat f)))
 
 (defn filter
   ([f coll]
-     (r/reduce -conj! #js [] (r/filter f coll)))
+     (r/reduce js-conj #js [] (r/filter f coll)))
   ([f]
    (r/filter f)))
 
 (defn remove
   ([f coll]
-     (r/reduce -conj! #js [] (r/remove f coll)))
+     (r/reduce js-conj #js [] (r/remove f coll)))
   ([f]
      (r/remove f)))
 
@@ -44,9 +48,9 @@
 
 (defn reducec->>
   [coll & forms]
-  (if (> (count forms) 0)
-    (r/reduce -conj! #js [] ((apply comp (reverse forms)) coll))
-    (r/reduce -conj! #js [] coll)))
+  (if (> (cljs.core/count forms) 0)
+    (r/reduce js-conj #js [] ((apply comp (reverse forms)) coll))
+    (r/reduce js-conj #js [] coll)))
 
 (defn sort
   ([coll] (.sort coll compare))
