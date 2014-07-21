@@ -1,50 +1,231 @@
 Derive
 ======
 
-One of the current (Summer 2014) trends in Functional UI design in the
-Clojurescript community is exploiting immutable state to enable highly
-efficient updating of a user interface in response to change.  The
-typical implementation pattern is a nested set of maps stored in a
-single Atom.  The benefits of this organization are many:
-checkpointable state, etc  (TBD)
+One of the current trends in Functional UI design in the Clojurescript
+community is exploits immutable state to enable highly efficient
+updating of a user interface in response to changing state.  One
+typical implementation pattern consists of a nested set of maps stored
+in a singular Atom.  The benefits of this organization are many: UI
+can watch a single point of state that can be easily checkpointed,
+restored, etc.
 
-Derive is a dependency tracking framework  complements React-style
-reactive interfaces.  It systematizes the derivation of data from a
-transactional store by exposing a protocol that enables a deriving
-function to capture the subset of values in the immutable specification coupled to a client-side index /
-database.
+Derive is a dependency tracking framework that provides an alternative
+strategy for propogating state change into the UI that complements
+existing strategies.  In short, Derive systematizes the derivation of
+new data from a core transactional store which may not provide the
+typicaly value comparison semantics of Clojurescript's persistent data
+structures.  The key to derive is for the store value to expose a
+protocol that enables a deriving function to track the dependencies it
+has on the underlying state and to only recompute a result when
+changes to the database would impact the answers provided by the
+derivation function.  
 
 Initial support is targeted for use with a front-end like React/Om and
-Datascript, although it is intended to be a more general design
-pattern.  This library emerged from frustrations we encountered using
-prior approaches to managing front-end UI construction in Clojurescript.
+our own experimental library NativeStore, although it is intended to
+be a more general design pattern.  In particular, Datascript should
+easily be adapted into this framework.
 
+The other motivation for Derive is replacing the existing 'explicit
+dataflow' semantics encouraged by frameworks like Hoplon and Pedestal
+and libraries like Reflex.
 
 Pedestal 0.3.0:
 
 - Complicated dataflow model connected via path naming conventions
 - Difficulty in identifying over 6-7 different files where a particular dataflow is happening - hard to trace effects to their root causes.
-- Potential for deadlock with cyclic core.async router dependencies.
+- Potential for deadlock with cyclic core.async router dependencies (deprecated version 0.3.0)
 - Limited control over prioritization / concurrency
 - Heavy-weight tree-difference model for incremental updates that generate alot of garbage for GC
 - New data 'feeds forward' unless explicitly inhibited (e.g. by making updates conditional on whether a target widget is active or not, adding state management complexity to every transform.)
 - Difference to giant state models can be hard to reason about in practice.
 - Overly complex stateful widget architecture
 
-
 Om 0.1.5 State Management
 
 - The domain model and the rendering model in practice aren't always easily co-embedded
 - The representation we render from isn't always what we want to directly side-effect
-- Constraining information flow to a tree is an artificial constraint
-- Passing an index down the tree becomes tedious.
+- Constraining information flow to a tree is artificial
+- Passing an index like Datascript down the tree becomes tedious.
 - No built-in method to implement effective cursors for database values (yet)
 - Changes to giant state models can be hard to reason about in practice
 - Sometimes hard to know what is a cursor value and what is not
 
 
-Concept
-=======
+Derive Benefits
+===============
+
+- Localize the logic specific to deriving and computing "renderable
+  models" to the components that will consume them (instead of in the
+  parent functions or external 'tree construction' logic)
+- Avoid explicit management of preconditions and/or routing, consuming
+  components specify the data they want from the domain state by
+  referencing a derivation method.  Components can easily share derivation
+  methods.
+- De-couple database schemas from the specifics of UI rendering functions
+  (Use simple data structures, defined by schemas, to drive rendering and
+  not to care about the extra cost of computing convenience representations)
+- Provide cheap comparisons as to whether a derived model needs to be recomputed,
+  and the respective UI update, given side effects to the database.
+- Support dynamic programming, only derive a resulting model once unless
+  preconditions have changed, but it is cheap to call the generating
+  methods many times.
+
+Longer term goals
+
+- Support explicit invalidation, memoized data TTL or LRU policies on
+  fixed-size DependencyTracker caches (to recover memory in
+  long-running programs), and to make these policies configurable with
+  metadata
+- Utilize speculative parallelism to pre-populate caches.  In a
+  threaded platform this reduces to a 'touch' operation running on a
+  background thread.  In Clojurescript web workers will require a
+  little more machinery to keep a background DB in sync with the main
+  DB and forward pre-computed state to derive functions on the main thread.
+
+
+Installing
+==========
+
+You can get the latest version of Derive from Clojars.
+
+```
+[com.vitalreactor/derive "0.1.0"]
+```
+
+```
+(require '[derive.core :as dr :include-macros true])
+```
+
+
+Tutorial
+========
+
+A derivation method is a pure function of one or more database
+references followed by zero or more, possibly complex, parameters.
+Here is an example based on a datascript DB value:
+
+``` clojure
+(defn-derived note [db note-id]
+  (->> (d/q '[:find ?note :in $ ?id :where
+  	          [?note :id ?id]]
+			db note-id)
+       ffirst
+       (d/entity db)
+       prepare-for-rendering))
+			
+```
+
+This function returns a note object, converts it to a map, and runs a
+transform function (not a derive function) which modifies its state.
+
+Under the hood, the derived function tracks the internal dependencies
+of each database read operation and associates them with the result
+returned by the body.  On subsequent calls with equal parameters, the
+method uses the previously captured dependencies to determine whether
+more recent values of the database invalidate the prior result.  If
+not, it returns the previously cached result.  This assumes that the
+dependency test is much cheaper than the time/space cost of
+recomputing a result.  
+
+Derived methods can be nested, allowing top level methods to merge
+the dependencies of all its children, assuming the children are also
+pure functions of their arguments, and only recomputing the call tree
+if some child requires an update and then, only updating the children
+that need to be updated very similar to a React rendering tree.
+
+```
+Show nesting example here
+```
+
+Under the hood each database call checks for an active dependency
+*tracker* implementing the IDependencyTracker protocol.  The tracker
+maintains a backing cache such that subsequent calls to notes with a
+possibly updated databases requires only a dependencies-changed? test
+to determine whether the body needs to be recomputed, or a memoized
+result returned.
+
+The dependency tracker can be used by non-derived functions using the
+macro capture-dependencies. The resulting dependency set can be
+explicitly stored and a transaction watcher can extract the dependency
+set implied by the latest transaction to determine whether the result of
+the body would change if rerun.
+
+```
+Show Om ShouldComponentUpdate here
+```
+
+NativeStore, the Native Type, Cursors, and References
+=====================================================
+
+NativeStore provides a simple, explicitly indexed in-memory database
+for managing native objects.  It is efficient, transactional, and
+supports emulation of immutability through dependency tracking.  It
+directly supports the ITrackDependencies interface required by Derive
+methods to invalidate results that are likely to change given the
+prior transaction.  The store does not currently maintain historical
+versions or a transaction log, but that is under consideration for
+future versions to support efficient snapshotting and restore of
+system state.
+
+All objects added to the store must be of type Native.  Native objects
+support the usual countable, assocable, transient, and lookup
+interfaces.  Standard assoc operations return copies.
+
+Native objects stored in the store are marked read-only on insertion.
+After a copy operation, these objects can be freely mutated by
+downstream code.  The original object can be updated by calling
+insert! directly or within a transaction body (to batch up changes and
+ensure database consistency during a transaction).
+
+We provide a Reference type to simplify modeling state with graph-like
+or relational structures.  When accessing a Native attribute, if the
+returned value implements the IReference protocol, the reference is
+unpacked and the value returned is the read-only underlying native
+instance referenced.  This is implemented as a deftype which maintains
+a reference to the store value and the root ID to lookup ("id").
+
+The state of the store is modelled as a heap indexed by the value in
+the "id" slot with zero or more indices on values of the objects
+accessed via NativeCursor values.  The NativeCursor type currently is only
+compatible with the reducers library via IReduce.  To do things like
+sorting, a reducer chain should return a fresh array.  The derive.dfns
+namespace contains various helper methods for working with Cursors,
+reducers, and native arrays.
+
+The immutable abstraction is not currently as rigorously enforced as
+it is in other parts of the Clojure ecosystem (Datomic, etc).  Some
+things to note:
+
+- Native objects may not be mutated outside transactions unless they are
+  first copied.  This is to inhibit side effects to the DB outside of transaction
+  functions and insert!/remove!.
+- It is currently an error to mutate a database object within a transaction function
+  without calling insert! to update the indices.
+- Object identity is retained across object boundaries, but code
+  should not currently depend identity or '=' holding across transactions.
+- Database cursors are also invalidated by transactions.  There are currently
+  no checks for cursor invalidation, so it is best to use them in environments
+  where cursors have finite extent.
+- Conventions are only enforced if you stick to clojure interfaces.
+  aget, aset, and direct member access bypass reference resolution,
+  read-only enforcemenet, etc.  However, if you kow what you are doing
+  you can still access values using constructs like (aget native
+  "field") and get near-optimal read performance on natives.
+
+- Use NativeStore responsibly.  We emphasized maximal performance,
+  decent flexiblity, with only a modicum of safety.  Safety emerges
+  from proper use of convention.
+
+All these tradeoffs may be reconsidered in future revisions of the
+NativeStore and NativeStore should be considered at an Alpha level of
+completeness.
+
+
+Concepts
+========
+
+Following are some of the working thoughts we are developing as part
+of the Derive effort.
 
 A user interface is a rendering of several elements of state:
 
@@ -161,72 +342,6 @@ We can have stream derivation functions that render the latest result
 of a long-running process so long as the process implements the
 derivation protocol.  
 
-NativeStore, the Native Type, Cursors, and References
-=====================================================
-
-NativeStore provides a simple, explicitly indexed in-memory database
-for managing native objects.  It is efficient, transactional, and
-supports emulation of immutability through dependency tracking.  It
-directly supports the ITrackDependencies interface required by Derive
-methods to invalidate results that are likely to change given the
-prior transaction.  The store does not currently maintain historical
-versions or a transaction log, but that is under consideration for
-future versions to support efficient snapshotting and restore of
-system state.
-
-All objects added to the store must be of type Native.  Native objects
-support the usual countable, assocable, transient, and lookup
-interfaces.  Standard assoc operations return copies.
-
-Native objects stored in the store are marked read-only on insertion.
-After a copy operation, these objects can be freely mutated by
-downstream code.  The original object can be updated by calling
-insert! directly or within a transaction body (to batch up changes and
-ensure database consistency during a transaction).
-
-We provide a Reference type to simplify modeling state with graph-like
-or relational structures.  When accessing a Native attribute, if the
-returned value implements the IReference protocol, the reference is
-unpacked and the value returned is the read-only underlying native
-instance referenced.  This is implemented as a deftype which maintains
-a reference to the store value and the root ID to lookup ("id").
-
-The state of the store is modelled as a heap indexed by the value in
-the "id" slot with zero or more indices on values of the objects
-accessed via NativeCursor values.  The NativeCursor type currently is only
-compatible with the reducers library via IReduce.  To do things like
-sorting, a reducer chain should return a fresh array.  The derive.dfns
-namespace contains various helper methods for working with Cursors,
-reducers, and native arrays.
-
-The immutable abstraction is not currently as rigorously enforced as
-it is in other parts of the Clojure ecosystem (Datomic, etc).  Some
-things to note:
-
-- Native objects may not be mutated outside transactions unless they are
-  first copied.  This is to inhibit side effects to the DB outside of transaction
-  functions and insert!/remove!.
-- It is currently an error to mutate a database object within a transaction function
-  without calling insert! to update the indices.
-- Object identity is retained across object boundaries, but code
-  should not currently depend identity or '=' holding across transactions.
-- Database cursors are also invalidated by transactions.  There are currently
-  no checks for cursor invalidation, so it is best to use them in environments
-  where cursors have finite extent.
-- Conventions are only enforced if you stick to clojure interfaces.
-  aget, aset, and direct member access bypass reference resolution,
-  read-only enforcemenet, etc.  However, if you kow what you are doing
-  you can still access values using constructs like (aget native
-  "field") and get near-optimal read performance on natives.
-
-- Use NativeStore responsibly.  We emphasized maximal performance,
-  decent flexiblity, with only a modicum of safety.  Safety emerges
-  from proper use of convention.
-
-All these tradeoffs may be reconsidered in future revisions of the
-NativeStore and NativeStore should be considered at an Alpha level of
-completeness.
-
 
 Design
 ======
@@ -238,98 +353,7 @@ There are three derivation protocols that work together:
 3. DependencyTracker - Implemented by derivation functions and components, an internal protocol for managing a set of dependencies and determining if an existing response to an input is still valid.
 
 
-Benefits
-========
-
-- Localize the logic specific to deriving and computing "render
-  models" to the components that will consume them (instead of in the
-  parent functions or external 'tree construction' logic)
-- Avoid explicit management of preconditions and/or routing, consuming
-  components specify the data they want from the client state by
-  calling a derivation method.  Components can easily share derivation
-  methods.
-- De-couple database schemas from the specifics of UI rendering functions
-  (Use simple data structures, defined by schemas, to drive rendering and
-  not to care about the extra cost of computing convenience representations)
-- Provide cheap comparisons of whether a derived model needs to be updated
-  given one or more changes to the database.
-- Dynamic programming, only derive a resulting model once unless
-  preconditions have changed, but feel free to call the generating
-  methods many times.
-
-Longer term goals
-
-- Export a protocol such that any database with appropriate
-  capabilities can participate in the derive protocol.
-- Support explicit invalidation, memoized data TTL or LRU policies on
-  fixed-size DependencyTracker caches (to recover memory in
-  long-running programs), and to make these policies configurable with
-  metadata
-- Utilize speculative parallelism to pre-populate caches.  In a
-  threaded platform this reduces to a 'touch' operation running on a
-  background thread.  In Clojurescript web workers will require a
-  little more machinery to keep a background DB in sync with the main
-  DB and to forward computed updates.
-
-
-Installing
-==========
-
-You can get the latest version of Derive from Clojars.
-
-```
-[com.vitalreactor/derive "0.1.0"]
-```
-
-Usage Examples
-==============
-
-```clojure
-(require '[derive :as dr :include-macros true])
-
-(defn-derive 
-
-Design
-======
-
-``` clojure
-(defn-derived note [db note-id]
-  (->> (d/q '[:find ?note :in $ ?id :where
-  	          [?note :id ?id]]
-			db note-id)
-			ffirst
-			(d/entity @conn)))
-```
-
-A derivation method is a pure function of one or more database
-references followed by zero or more, possibly complex, parameters.
-
-Under the hood, the derived function tracks dependencies implied by
-each database operation and associates them with the result returned
-by the body.  On subsequent calls with equal parameters, the method
-uses the previously captured dependencies to determine whether more
-recent values of the database invalidate the prior result.  If not, it
-returns the cached result.  This assumes that the dependency test is
-much cheaper than the time/space cost of recomputing a result.
-
-Derived methods can be nested, allowing top level methods to merge
-the dependencies of all its children, assuming the children are also
-pure functions of their arguments, and only recomputing the call tree
-if some child requires an update and then, only updating the children
-that need to be updated very similar to a React rendering tree.
-
-Under the hood each database call uses the IDerive protocol against
-a that populates
-
-a backing cache such that subsequent calls to notes with a possibly
-updated databases requires only a dependencies-changed? test to
-determine whether the body needs to be recomputed, or a memoized
-result can be returned.
-
-Calls to database query methods export a representation of the
-dependencies that query has on the database state.
-
-Workflow
+Testing Workflow
 =================
 
 1) Start 'lein repl'
@@ -344,79 +368,6 @@ Workflow
 4) Run '(browser-repl)'
 
 5) Load localhost:3449/index.html into a browser
-
-
-Orchestra Workflow Goals
-========================
-
-1) Live editing JS/CSS
-   - e.g. widgets file for Amelia and us in dev mode
-   - e.g. dev-noww full site editing of CSS/JS
-   - Ability to connect a REPL to this environment
-   
-2) Headless repl environment with the full code
-   - Connect from Emacs
-   - Meta-. navigation
-   - Developing new derive widgets
-   - C-x C-e eval optional
-   
-
-React Integration
-=================
-
-In our usage case, a component file contains:
-
-- Input schema specification
-- Component definition
-- One or more auxiliary render methods
-- One or more derivation functions called by render functions
-- A set of exported actions (also documented by schemas)
-
-On client applications there can be latency induced by the use of
-setInterval and setTimeout that encouraged us to provide some
-utilities around a callback dictionary that passed down the render
-tree in shared out-of-band state along with the database value.
-
-Higher level components have more system awareness and are able to
-determine where and how to update system state by plugging into 
-
-TODO Spike 1 - Semantics
-================
-x 1) Simplest possible native data store (heap indexed by :id)
-x 2) Simplest possible value / range queries (simple indexing) 
-3) Pipe all models from service layer to native store
-4) Build derive functions that always recompute; force om models to always re-render
-5) Develop derive functions for current mobile timeline (simple functions only)
-6) Try executing mobile timeline using only non-pedestal models on a branch
-   - Gives us a performance baseline
-   - Compare to an om update that never renders (just to get performance gain possibility)
-
-TODO Spike 2 - Dependencies
-===============
-1) Add transaction notification to native store
-2) Derive functions as IFn objects that cache results given params
-3) Capture query dependencies up derive call stack
-4) Derive functions associate store, params, deps, and result
-5) Derive functions listen to store txns passed into it
-6) Invalidate cache as appropriate (use store dependency API)
-7) Develop Om extension to only re-render if any dependencies were invalidated
-
-TODO Spike 3 - Performance
-===============
-1) Native store indexing
-2) Think carefully about copying
-3) Develop conventions around manipulation of native objects
-4) Think about how to lazy/eager policies for derive fns
-   (e.g. simple derive functions could update cache from txn without query)
-
-
-Other Desired Features
-================
-Inhibit side effects to heap objects outside transaction!
-Secondary indexing allowing map/sort/filter (without copying?)
-Simple schemas to identify relational links among objects
-Create "Reference" values on import that, when derefed, return a copy of the target object
-Turn on 'always copy' for debugging purposes
 
 
 Acknowledgements
