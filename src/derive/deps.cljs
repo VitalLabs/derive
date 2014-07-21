@@ -163,7 +163,11 @@
 
   (unsubscribe! [this listener deps]
     (set! listeners (update-in listeners [deps] disj listener))))
+
+(defn create-derive-fn [dfn lfn]
+  dfn lfn #{} (derive.deps/default-cache) #{})
   
+
 ;; Ensure we're subscribed to stores we encounter
 (defn ensure-subscription [derive store]
   (when-not ((.-subscriptions derive) store)

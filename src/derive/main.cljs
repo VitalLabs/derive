@@ -4,8 +4,8 @@
             [sablono.core :as html :refer-macros [html]]
             [clojure.core.reducers :as r]
             [derive.repl :as repl]
-            [derive.tools :as tools]
             [derive.dfns :as d]
+            [derive.deps :as deps :include-macros true]
             [derive.nativestore :as store]
             [derive.debug-level :as debug-level]))
 
@@ -20,9 +20,9 @@
 (defonce db (store/native-store))
 
 (defn load-db []
-  (store/ensure-index db :text)
-  (store/ensure-index db :value-lt)
-  (store/ensure-index db :value-gt (comparator >))
+  (store/ensure-index db :text :text)
+  (store/ensure-index db :value-lt :int)
+  (store/ensure-index db :value-gt :int (comparator >))
   
   (store/insert! db #js {:id 1 :text "Hi there." :int 10
                          :next (store/NativeReference. db 2)})
@@ -43,8 +43,12 @@
 ;; Derive renderable state
 ;;
 
-(defn derive-count
-  "Somewhat artificial example of a processing pipeline with a sort step"
+(defn derive-count [db id]
+  id)
+
+;; TODO: Still having build errors
+#_(deps/defn-derived derive-count2
+;  "Somewhat artificial example of a processing pipeline with a sort step"
   [db id]
   (println "Computing Count")
   (->> (store/cursor db :value-lt 0 (* id 10))
@@ -55,12 +59,13 @@
        (d/sort (comparator >))
        (reduce + 0)))
 
-(defn derive-text [db id]
+(defn derive-text
+  [db id]
 ;  (let [tracker nil #_(default-tracker)]
 ;    (fn [db id]
 ;      (binding [*tracker* nil #_(tracker db [id] *tracker*)]
-        (println "Computing Text")
-        (str (:text (db id))  " [" (derive-count db id) "]"))
+  (println "Computing Text")
+  (str (:text (db id))  " [" (derive-count db id) "]"))
 
 (defn inc-mod [modulus]
   (fn [old]
@@ -95,7 +100,7 @@
 
 (defn ^:export init [dev]
   (debug-level/set-level!)
-  (tools/log "(init) dev:" dev)
+  #_(tools/log "(init) dev:" dev)
   (repl/connect)
   (start-app))
 

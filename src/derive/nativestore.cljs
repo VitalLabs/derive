@@ -407,9 +407,9 @@
        (add-index! store iname (ordered-index (field-key key) comp))))
   ([store iname key-or-idx]
      (if (or (keyword? key-or-idx) (symbol? key-or-idx))
-       (ensure-index store iname (field-key key-or-idx) compare)
+       (ensure-index store iname key-or-idx compare)
        (when-not (get-index store iname)
-         (add-index store iname key-or-idx))))) ;; key is an index
+         (add-index! store iname key-or-idx))))) ;; key is an index
 
 (comment
   (def store (native-store))
