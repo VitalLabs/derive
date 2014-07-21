@@ -20,12 +20,10 @@
 (defonce db (store/native-store))
 
 (defn load-db []
-  (when (not (store/get-index db :text))
-    (store/add-index! db :text (store/ordered-index (store/field-key :text) compare)))
-  (when (not (store/get-index db :value-lt))
-    (store/add-index! db :value-lt (store/ordered-index (store/field-key :int) compare)))
-  (when (not (store/get-index db :value-gt))
-    (store/add-index! db :value-gt (store/ordered-index (store/field-key :int) (comparator >))))
+  (store/ensure-index db :text)
+  (store/ensure-index db :value-lt)
+  (store/ensure-index db :value-gt (comparator >))
+  
   (store/insert! db #js {:id 1 :text "Hi there." :int 10
                          :next (store/NativeReference. db 2)})
   (store/insert! db #js {:id 2 :text "I'm cycling..." :int 20

@@ -375,6 +375,7 @@
 
 (defn transact! [store f & args]
   (-transact! store f args))
+
 ;;
 ;; External interface
 ;;
@@ -403,6 +404,16 @@
     (fn [obj]
       (when (= t (aget obj "type"))
         (aget obj f)))))
+
+(defn ensure-index
+  ([store iname key comp]
+     (when-not (get-index store iname)
+       (add-index! store iname (ordered-index (field-key key) comp))))
+  ([store iname key-or-idx]
+     (if (or (keyword? key-or-idx) (symbol? key-or-idx))
+       (ensure-index store iname (field-key key-or-idx) compare)
+       (when-not (get-index store iname)
+         (add-index store iname key-or-idx))))) ;; key is an index
 
 (comment
   (def store (native-store))
