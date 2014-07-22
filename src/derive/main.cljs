@@ -7,7 +7,7 @@
             [derive.repl :as repl]
             [derive.debug-level :as debug-level]
             [derive.deps :as deps :include-macros true]
-            [derive.nativestore :as store :refer [insert! delete! cursor]]
+            [derive.nativestore :as store :refer [insert! delete! cursor transact!]]
             [derive.dfns :as d]))
 
 (enable-console-print!)
@@ -33,27 +33,29 @@
                                     :next (store/NativeReference. db 4)})
   (insert! db #js {:id 4 :text "And then I repeat!" :int 40
                                     :next (store/NativeReference. db 1)})
-  #_(time
-   (do
-     (dotimes [i 1000]
-       (insert! db #js {:id (+ 10000 i) :text (str "entry-" (rand-int i))}))
-     (dotimes [i 1000]
-       (insert! db #js {:id (+ 20000 i) :int (rand-int i)}))
-     nil)))
+  (transact! db
+   (fn [db]
+     (time
+      (do
+        (dotimes [i 1000]
+          (insert! db #js {:id (+ 10000 i) :text (str "entry-" (rand-int i))}))
+        (dotimes [i 1000]
+          (insert! db #js {:id (+ 20000 i) :int (rand-int i)}))
+        nil)))))
 
 ;;
 ;; Derive renderable state
 ;;
 
 (defn-derived derive-count [db id]
-  (println "Computing simple count")
+  #_(println "Computing simple count")
   (:int (db id)))
 
 ;; TODO: Still having build errors
 (defn-derived derive-count2
 ;  "Somewhat artificial example of a processing pipeline with a sort step"
   [db id]
-  (println "Computing derived count")
+  #_(println "Computing derived count")
   (->> (cursor db :value-lt 0 (* id 10))
        (r/map :int)
        (r/filter even?)
@@ -66,7 +68,7 @@
 (defn derive-count3
 ;  "Somewhat artificial example of a processing pipeline with a sort step"
   [db id]
-  (println "Computing underived count")
+  #_(println "Computing underived count")
   (->> (cursor db :value-lt 0 (* id 10))
        (r/map :int)
        (r/filter even?)

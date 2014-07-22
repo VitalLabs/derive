@@ -24,7 +24,8 @@
   (subscribe! [this listener] [this listener deps]
     "Call tracker method when deps match a change operation")
   (unsubscribe! [this listener] [this listener deps]
-    "Call tracker method when deps match a change operation"))
+    "Call tracker method when deps match a change operation")
+  (empty-deps [this]))
 
 (defprotocol IDependencyTracker
   "Implemented by function and component caches"
@@ -77,7 +78,7 @@
   (invalidate! [this store deps]
     (->> (reduce (fn [c [params [value vstore vdeps]]]
                    (if (and (= vstore store)
-                            (or (nil? deps)
+                            (or (nil? deps) (nil? vdeps)
                                 (match-deps vdeps deps)))
                      (dissoc! c params)
                      c))
@@ -93,28 +94,34 @@
 (deftype DefaultTracker [^:mutable deps]
   IDependencyTracker
   (depends! [this store new-deps]
+    #_(println "depends!: " (.-deps deps) (or (.-deps new-deps) new-deps) "\n")
     (set! deps (merge-deps deps new-deps)))
 
   (dependencies [this] deps))
 
 (defn default-tracker 
-  ([] (DefaultTracker. #{})))
+  ([] (DefaultTracker. #{}))
+  ([deps] (DefaultTracker. deps)))
 
 
 ;; Utilities for stores
 
 (defn tracking? [] (not (nil? *tracker*)))
 
-(defn inform-tracker [store deps]
-  (when-let [tracker *tracker*]
-    (depends! tracker store deps)))
+(defn inform-tracker
+  ([store deps]
+     (when (tracking?)
+       (inform-tracker *tracker* store deps)))
+  ([tracker store deps]
+     #_(println "Informing tracker: " (or (.-deps deps) deps) " t? " *tracker* "\n")
+     (depends! tracker store deps)))
 
 
 ;;
 ;; Derive Function
 ;;
 
-(deftype DeriveFn [dfn lfn ^:mutable subscriptions ^:mutable cache ^:mutable listeners]
+(deftype DeriveFn [fname dfn lfn ^:mutable subscriptions ^:mutable cache ^:mutable listeners]
   Fn
   IFn
   (-invoke [this]
@@ -170,13 +177,15 @@
   (unsubscribe! [this listener]
     (set! listeners (update-in listeners [nil] disj listener)))
   (unsubscribe! [this listener deps]
-    (set! listeners (update-in listeners [deps] disj listener))))
+    (set! listeners (update-in listeners [deps] disj listener)))
+  (empty-deps [this] #{}))
+ 
 
 (defn empty-derive-fn [& args]
   (assert false "Uninitialized derive fn"))
 
-(defn create-derive-fn []
-  (DeriveFn. empty-derive-fn empty-derive-fn
+(defn create-derive-fn [fname]
+  (DeriveFn. fname empty-derive-fn empty-derive-fn
              #{} (derive.deps/default-cache) {}))
   
 
@@ -193,7 +202,7 @@
 (defn derive-value
   "Handle deps and cache values from normal calls"
   [derive params]
-  (first (get-value (.-cache derive) params)))
+  (get-value (.-cache derive) params))
 
 (defn update-derive
   [derive params value store deps parent-tracker]
@@ -204,13 +213,14 @@
 (defn notify-listeners [store deps]
   (let [listeners (.-listeners store)]
     (->> (keys listeners)
-         (filter (partial match-deps deps)) ;; cheap consolidation
+         (filter #(or (nil? %) (match-deps % deps))) ;; cheap consolidation
          (map (fn [k] (doseq [l (get listeners k)] (l store deps))))
          doall)))
 
 (defn derive-listener
   "Helper. Handle source listener events"
   [derive store deps]
+  #_(println "Derive received: " (.-deps deps))
   (let [cache (.-cache derive)]
     (invalidate! cache store deps)
     (notify-listeners derive deps)))

@@ -1,6 +1,7 @@
 (ns derive.nativestore
+  (:require-macros [derive.deps :refer [with-tracked-dependencies]])
   (:require [goog.object :as obj]
-            [derive.deps :as deps]
+            [derive.deps :as deps :include-macros true]
             [purnam.native.functions :refer [js-lookup js-assoc js-dissoc
                                              js-merge js-map js-copy]]))
 
@@ -70,6 +71,7 @@
 (defn- merge-index!
   "Merge the index range or root set"
   [nset idx range1 range2]
+  #_(println "idx: " (type idx) "r1: " range1 "r2: " range2 "\n")
   (if (nil? idx) ; root?
     (sorted-insert! range1 range2)
     (merge-range! (comparator-fn idx) range1 range2)))
@@ -77,14 +79,15 @@
 
 (defn- intersect?
   "Do two sorted sets of integers intersect?"
-  [this other]
-  (let [tlen (.-length this)
-        olen (.-length other)]
+  [set1 set2]
+  #_(println "Intersect? " set1 set2)
+  (let [len1 (if (nil? set1) 0 (.-length set1))
+        len2 (if (nil? set2) 0 (.-length set2))]
     (loop [i 0 j 0]
-      (if (or (= i tlen) (= j olen))
+      (if (or (= i len1) (= j len2))
         false
-        (let [v1 (aget this i)
-              v2 (aget other j)]
+        (let [v1 (aget set1 i)
+              v2 (aget set2 j)]
           (cond (= v1 v2) true
                 (> (compare v1 v2) 0) (recur i (inc j))
                 :default (recur (inc i) j)))))))
@@ -101,20 +104,30 @@
   
 (defn- match-index?
   [nset idx this-range other-range]
+  #_(println "Matching index: " this-range " " other-range "\n")
   (if (nil? idx) ; root?
     (intersect? this-range other-range)
     (overlap? (comparator-fn idx) this-range other-range)))
 
 (deftype NativeDependencySet [store deps]
-  IDependencySet
-  (merge-deps [this other]
-    (goog.object.forEach
-     other (fn [v k] (merge-index! this (get-index store k) (aget deps k) v)))
-    this)
-  (match-deps [this other]
-    (goog.object.some 
-     other (fn [v k] (match-index? this (get-index store k) (aget deps k) v)))
-    this))
+  deps/IDependencySet
+  (merge-deps [nset other]
+    #_(println "NSet merge: " (type store) deps other "\n")
+    (let [fdeps (if (nil? (.-deps other)) other (.-deps other))]
+      (goog.object.forEach
+       fdeps (fn [v k]
+               (if-let [mine (aget deps k)]
+                 (merge-index! nset (get-index store k) mine v)
+                 (aset deps k (js-copy v)))))
+      nset))
+  (match-deps [nset other]
+    (let [fdeps (if (nil? (.-deps other)) other (.-deps other))]
+      #_(println "Matching: " deps fdeps "\n")
+      (goog.object.some 
+       fdeps (fn [v k o] #_(println "matching-key: " k "\n")
+               (when-let [local (aget deps k)]
+                 (match-index? nset (get-index store k) local v)))))))
+
 
 (defn make-dependencies
   ([store] (NativeDependencySet. store #js {}))
@@ -344,7 +357,7 @@
         (goog.array.removeAt arry loc)))
     idx)
 
-  IIndexedStore
+  ISortedIndex
   (comparator-fn [idx] compfn)
 
   IScannable
@@ -362,7 +375,7 @@
       (Cursor. idx head tail true))))
 
 (defn ordered-index [keyfn compfn]
-  (BinaryIndex. keyfn compfn #js []))
+  (BinaryIndex. keyfn compfn (array)))
 
 ;; A native, indexed, mutable/transactional store
 ;; - Always performs a merging upsert
@@ -372,8 +385,9 @@
   (-lookup [store id]
     (-lookup store id nil))
   (-lookup [store id not-found]
-    (deps/inform-tracker store #{id})
-    (-lookup root id not-found))
+    (when-let [val (-lookup root id not-found)]
+      (deps/inform-tracker store (js-obj "_root" (array id)))
+      val))
 
   ICounted
   (-count [store] (-count root))
@@ -386,46 +400,70 @@
 
   IStore
   (insert! [store obj]
-    (let [obj (if (= (type obj) Native)
-                (do (set! (.-__ro obj) true) obj)
-                (let [native (to-native obj)]
-                  (set! (.-__ro native) true)
-                  native))]
-      (let [key ((key-fn root) obj)
-            _ (assert key "Must have an ID field")
-            names (js-keys indices)
-            old (get root key)
-            oldref (when old (js-copy old))]
-        (when old
-          (doseq [name names]
-            (let [idx (aget indices name)]
-              (when-not (nil? ((key-fn idx) old))
-                (unindex! idx old)))))
-        (index! root obj) ;; merging upsert
-        (let [new (get root key)]
-          (doseq [name names]
-            (let [idx (aget indices name)]
-              (when-not (nil? ((key-fn idx) new))
-                (index! idx new))))
-          (when *transaction*
-            (.push *transaction* #js [:insert oldref new]))
-          (deps/notify-listeners store #{key})
-          (-notify-watches store oldref #js [:insert new]))))
-    store)
+    ;; 1) Transactional by default or participates in wrapping transaction
+    ;; Transaction listeners get a log of all side effects per transaction
+    ;;
+    ;; 2) Track side effects against indices, etc and forward to enclosing
+    ;; transaction if present or notify active dependency listeners
+    #_(println "Called insert!\n")
+    (with-tracked-dependencies
+      [parent result deps (deps/empty-deps store)]
+      (let [obj (if (= (type obj) Native)
+                  (do (set! (.-__ro obj) true) obj)
+                  (let [native (to-native obj)]
+                    (set! (.-__ro native) true)
+                    native))]
+        (let [key ((key-fn root) obj)
+              _ (assert key "Must have an ID field")
+              names (js-keys indices)
+              old (get root key)
+              oldref (when old (js-copy old))]
+          ;; Unindex 
+          (when old
+            (doseq [iname names]
+              (let [idx (aget indices iname)
+                    ikey ((key-fn idx) old)]
+                (when-not (nil? ikey)
+                  (deps/inform-tracker store (js-obj (name iname) (array ikey ikey)))
+                  (unindex! idx old)))))
+          ;; Merge-update the root
+          #_(println "Informing tracker of root: " (js-obj "_root" (array key)) "\n")
+          (deps/inform-tracker store (js-obj "_root" (array key)))
+          (index! root obj) ;; merging upsert
+          (let [new (get root key)]
+            ;; Re-insert
+            (doseq [iname names]
+              (let [idx (aget indices iname)
+                    ikey ((key-fn idx) new)]
+                (when-not (nil? ikey)
+                  (deps/inform-tracker store (js-obj (name iname) (array ikey ikey)))
+                  (index! idx new))))
+            ;; Update listeners
+            (if *transaction*
+              (.push *transaction* #js [:insert oldref new])
+              (-notify-watches store nil #js [#js [:insert oldref new]]))))
+        store)
+      (if parent
+        (deps/inform-tracker parent store deps)
+        (deps/notify-listeners store deps))))
 
   (delete! [store id]
     (assert (contains? root id) "Exists")
-    (let [old (get root id)]
-      (doseq [name (js-keys indices)]
-        (let [idx (aget indices name)]
-          (when ((key-fn idx) old)
-            (unindex! idx old))))
-      (unindex! root old)
-      (when *transaction*
-        (.push *transaction* #js [:delete old]))
-      (-notify-watches store old #js [:delete])
-      (deps/notify-listeners store #{((key-fn root) old)}))
-    store)
+    (with-tracked-dependencies
+      [parent result deps (deps/empty-deps store)]
+      (let [old (get root id)]
+        (doseq [name (js-keys indices)]
+          (let [idx (aget indices name)]
+            (when ((key-fn idx) old)
+              (unindex! idx old))))
+        (unindex! root old)
+        (if *transaction*
+          (.push *transaction* #js [:delete old])
+          (-notify-watches store nil #js [:delete old]))
+        store)
+      (if parent
+        (deps/inform-tracker store deps)
+        (deps/notify-listeners store deps))))
 
   IIndexedStore
   (add-index! [store iname index]
@@ -439,23 +477,26 @@
   (get-index [store iname]
     (js-lookup indices iname))
 
+  ITransactionalStore
+  (-transact! [store f args]
+    (with-tracked-dependencies ;; TODO: separate process so we ignore read deps in transactions?
+      [parent result deps (deps/empty-deps store)]
+      (binding [*transaction* #js []]
+        (let [result (apply f store args)]
+          (-notify-watches store nil *transaction*)))
+      (deps/notify-listeners store deps)))
+        
   IWatchable
-  (-notify-watches [store oldval newval]
+  (-notify-watches [store _ txs]
     (doseq [name (js-keys tx-listeners)]
       (let [listener (get tx-listeners name)]
-        (listener oldval newval)))
+        (listener nil txs)))
     store)
   (-add-watch [store key f]
     (js-assoc tx-listeners key f)
     store)
   (-remove-watch [store key]
     (js-dissoc tx-listeners key)
-    store)
-  
-  ITransactionalStore
-  (-transact! [store f args]
-    (binding [*transaction* #js []]
-      (apply f store args))
     store)
 
   deps/IDependencySource
@@ -466,8 +507,9 @@
   (unsubscribe! [this listener]
     (set! listeners (update-in listeners [nil] disj listener)))
   (unsubscribe! [this listener deps]
-    (set! listeners (update-in listeners [deps] disj listener))))
-    
+    (set! listeners (update-in listeners [deps] disj listener)))
+  (empty-deps [this] (make-dependencies this)))
+
 
 (defn native-store []
   (NativeStore. (root-index) #js {} #js {} {}))
@@ -485,12 +527,20 @@
   ([store index key]
      (-> (get-index store index) (get key))))
 
+(defn- last-val [idx]
+  ((key-fn idx) (aget (.-arry idx) (- (alength (.-arry idx)) 1))))
+
 (defn cursor
   "Walk the entire store, or an index"
   ([store]
+     ;; TODO - this is broken, add inform tracker, etc.
      (apply -get-cursor store))
-  ([store index & args]
-     (apply -get-cursor (get-index store index) args)))
+  ([store index start]
+     (deps/inform-tracker store (js-obj (name index) (array start (last-val index)))) ;; shorthand
+     (-get-cursor (get-index store index) start))
+  ([store index start end]
+     (deps/inform-tracker store (js-obj (name index) (array [start end])))
+     (-get-cursor (get-index store index) start end)))
 
 (defn field-key [field]
   (let [f (name field)]
