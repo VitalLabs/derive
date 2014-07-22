@@ -150,7 +150,7 @@
   "Copying version of to-native"
   [jsobj]
   (let [native (Native. false)]
-    (goog.object.forEach jsobj (fn [v k] (assoc! native k v)))
+    (goog.object.forEach jsobj (fn [v k] (aset native k v)))
     native))
 
 (comment
@@ -280,11 +280,12 @@
 ;; A native, indexed, mutable/transactional store
 ;; - Always performs a merging upsert
 ;; - Secondary index doesn't index objects for key-fn -> nil
-(deftype NativeStore [root indices listeners]
+(deftype NativeStore [root indices tx-listeners ^:mutable listeners]
   ILookup
   (-lookup [store id]
     (-lookup store id nil))
   (-lookup [store id not-found]
+    (deps/inform-tracker store #{id})
     (-lookup root id not-found))
 
   ICounted
@@ -304,6 +305,7 @@
                   (set! (.-__ro native) true)
                   native))]
       (let [key ((key-fn root) obj)
+            _ (assert key "Must have an ID field")
             names (js-keys indices)
             old (get root key)
             oldref (when old (js-copy old))]
@@ -318,10 +320,12 @@
             (let [idx (aget indices name)]
               (when-not (nil? ((key-fn idx) new))
                 (index! idx new))))
-          (if *transaction*
-            (.push *transaction* #js [:insert oldref new])
-            (-notify-watches store oldref #js [:insert new])))))
+          (when *transaction*
+            (.push *transaction* #js [:insert oldref new]))
+          (deps/notify-listeners store #{key})
+          (-notify-watches store oldref #js [:insert new]))))
     store)
+
   (delete! [store id]
     (assert (contains? root id) "Exists")
     (let [old (get root id)]
@@ -330,9 +334,10 @@
           (when ((key-fn idx) old)
             (unindex! idx old))))
       (unindex! root old)
-      (if *transaction*
-        (.push *transaction* #js [:delete old])
-        (-notify-watches store old #js [:delete])))
+      (when *transaction*
+        (.push *transaction* #js [:delete old]))
+      (-notify-watches store old #js [:delete])
+      (deps/notify-listeners store #{((key-fn root) old)}))
     store)
 
   IIndexedStore
@@ -349,25 +354,36 @@
 
   IWatchable
   (-notify-watches [store oldval newval]
-    (doseq [name (js-keys listeners)]
-      (let [listener (get listeners name)]
+    (doseq [name (js-keys tx-listeners)]
+      (let [listener (get tx-listeners name)]
         (listener oldval newval)))
     store)
   (-add-watch [store key f]
-    (js-assoc listeners key f)
+    (js-assoc tx-listeners key f)
     store)
   (-remove-watch [store key]
-    (js-dissoc listeners key)
+    (js-dissoc tx-listeners key)
     store)
   
   ITransactionalStore
   (-transact! [store f args]
     (binding [*transaction* #js []]
       (apply f store args))
-    store))
+    store)
+
+  deps/IDependencySource
+  (subscribe! [this listener]
+    (set! listeners (update-in listeners [nil] (fnil conj #{}) listener)))
+  (subscribe! [this listener deps]
+    (set! listeners (update-in listeners [deps] (fnil conj #{}) listener)))
+  (unsubscribe! [this listener]
+    (set! listeners (update-in listeners [nil] disj listener)))
+  (unsubscribe! [this listener deps]
+    (set! listeners (update-in listeners [deps] disj listener))))
+    
 
 (defn native-store []
-  (NativeStore. (root-index) #js {} #js {}))
+  (NativeStore. (root-index) #js {} #js {} {}))
 
 (defn transact! [store f & args]
   (-transact! store f args))

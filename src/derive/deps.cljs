@@ -10,9 +10,9 @@
        :dynamic true}
   *tracker* nil)
 
-;; Passed to dependency trackers during queries via record-dependency
+
 (defprotocol IDependencySet
-  "An immutable set of dependencies"
+  "An immutable set of dependencies. Passed to dependency trackers during queries via record-dependency"
   (merge-deps [this deps]
     "Merge two dependencies")
   (match-deps [this set]
@@ -28,7 +28,7 @@
 
 (defprotocol IDependencyTracker
   "Implemented by function and component caches"
-  (depends! [this deps]
+  (depends! [this store deps]
     "Dependency sources call this method if a tracker is bound in the current
      context with dependencies that are encountered during query processing.")
   (dependencies [this]
@@ -54,13 +54,13 @@
   (merge-deps [this deps]
     (s/union this deps))
   (match-deps [this deps]
-    (or (nil? deps) (s/intersection this deps)))
+    (or (nil? deps) (not (empty? (s/intersection this deps)))))
 
   PersistentTreeSet
   (merge-deps [this deps]
     (s/union this deps))
   (match-deps [this deps]
-    (s/intersection this deps)))
+    (or (nil? deps) (not (empty? (s/intersection this deps))))))
 
 ;;
 ;; Simple tracker
@@ -68,7 +68,6 @@
 
 (deftype DefaultCache [^:mutable cache]
   IDependencyCache
-  (reset! [this] (set! cache {}) this)
   (get-value [_ params] (get cache params))
   (add-value! [this params value store deps]
     (set! cache (assoc cache params [value store deps]))
@@ -78,26 +77,38 @@
   (invalidate! [this store deps]
     (->> (reduce (fn [c [params [value vstore vdeps]]]
                    (if (and (= vstore store)
-                            (match-deps vdeps deps))
+                            (or (nil? deps)
+                                (match-deps vdeps deps)))
                      (dissoc! c params)
                      c))
                  (transient cache)
                  cache)
          persistent!
-         (set! cache))))
+         (set! cache)))
+  (reset! [this] (set! cache {}) this))
 
 (defn default-cache []
   (DefaultCache. {}))
     
 (deftype DefaultTracker [^:mutable deps]
   IDependencyTracker
-  (depends! [this new-deps]
+  (depends! [this store new-deps]
     (set! deps (merge-deps deps new-deps)))
 
   (dependencies [this] deps))
 
 (defn default-tracker 
-  ([] (DefaultTracker. nil)))
+  ([] (DefaultTracker. #{})))
+
+
+;; Utilities for stores
+
+(defn tracking? [] (not (nil? *tracker*)))
+
+(defn inform-tracker [store deps]
+  (when-let [tracker *tracker*]
+    (depends! tracker store deps)))
+
 
 ;;
 ;; Derive Function
@@ -154,75 +165,62 @@
   IDependencySource
   (subscribe! [this listener]
     (set! listeners (update-in listeners [nil] (fnil conj #{}) listener)))
-     
   (subscribe! [this listener deps]
     (set! listeners (update-in listeners [deps] (fnil conj #{}) listener)))
-
   (unsubscribe! [this listener]
     (set! listeners (update-in listeners [nil] disj listener)))
-
   (unsubscribe! [this listener deps]
     (set! listeners (update-in listeners [deps] disj listener))))
 
-(defn create-derive-fn [dfn lfn]
-  (DeriveFn. dfn lfn #{} (derive.deps/default-cache) #{}))
+(defn empty-derive-fn [& args]
+  (assert false "Uninitialized derive fn"))
+
+(defn create-derive-fn []
+  (DeriveFn. empty-derive-fn empty-derive-fn
+             #{} (derive.deps/default-cache) {}))
   
 
-;; Ensure we're subscribed to stores we encounter
-(defn ensure-subscription [derive store]
+(defn ensure-subscription 
+  "Ensure we're subscribed to stores we encounter"
+  [derive store]
   (when-not ((.-subscriptions derive) store)
+    (subscribe! store (.-lfn derive))
     (set! (.-subscriptions derive) (conj (.-subscriptions derive) store))))
 
 (defn release-subscriptions [derive]
-  (map #(unsubscribe! % (.-lfn derive)) (.-subscriptions derive)))
+  (doall (map #(unsubscribe! % (.-lfn derive)) (.-subscriptions derive))))
     
-;; Handle deps and cache values from normal calls
-(defn derive-value [derive params]
-  (get-value (.-cache derive) params))
+(defn derive-value
+  "Handle deps and cache values from normal calls"
+  [derive params]
+  (first (get-value (.-cache derive) params)))
 
-(defn update-derive [derive params value store deps parent-tracker]
+(defn update-derive
+  [derive params value store deps parent-tracker]
   (add-value! (.-cache derive) params value store deps)
-  (depends! parent-tracker deps)
+  (when parent-tracker (depends! parent-tracker store deps))
   value)
 
-;; Handle source listener events
-(defn derive-listener [derive store deps]
-  (let [cache (.-cache derive)
-        listeners (.-listeners derive)]
-    (invalidate! cache store deps)
+(defn notify-listeners [store deps]
+  (let [listeners (.-listeners store)]
     (->> (keys listeners)
-         (r/filter (partial match-deps deps)) ;; cheap consolidation
-         (r/map (fn [k] (map #(% store deps) (get listeners k))))
-         (r/reduce #(identity %1) nil))))
+         (filter (partial match-deps deps)) ;; cheap consolidation
+         (map (fn [k] (doseq [l (get listeners k)] (l store deps))))
+         doall)))
 
-;; And inform upstream when we're redefined
-(defn invalidate-all-listeners [derive]
+(defn derive-listener
+  "Helper. Handle source listener events"
+  [derive store deps]
+  (let [cache (.-cache derive)]
+    (invalidate! cache store deps)
+    (notify-listeners derive deps)))
+    
+(defn invalidate-all-listeners
+  "Helper. Inform upstream when we're redefined"
+  [derive]
   (doall
    (map (fn [f] (f derive nil))
         (flatten (vals (.-listeners derive))))))
 
-;; Examples
-
-(comment
-
-  (defn card [db task-id]
-    (let [{:keys [db deps]} (get-memo task-id)
-          change-set (txn-diff db new)]
-      (if (set/intersection deps change-set)
-        (with-dependency-capture deps
-          (let [res (card* app task-id)]
-            ;; save res, deps -> db + params
-            res))
-        (:res state))))
-
-  (defmacro defn-derived [card [new-db & args] & body]
-    `(let [cache# (atom {})]
-       (defn ~card ~(vec (cons new-db args))
-         (let [{:keys [db deps]} ((deref cache#) args)
-               changes (change-set conn)]
-           (if-not (empty? (set/intersection changes deps))
-             (with-dependency-capture deps
-               (let [res (do ~@body)]
-                 (card* app task-id)))))))))
 
   
