@@ -37,7 +37,7 @@ TODO Spike 1 - Semantics
 x 1) Simplest possible native data store (heap indexed by :id)
 x 2) Simplest possible value / range queries (simple indexing) 
 3) Pipe all models from service layer to native store
-4) Build derive functions that always recompute; force om models to always re-render
+N/A 4) Build derive functions that always recompute; force om models to always re-render
 5) Develop derive functions for current mobile timeline (simple functions only)
 6) Try executing mobile timeline using only non-pedestal models on a branch
    - Gives us a performance baseline
@@ -45,29 +45,29 @@ x 2) Simplest possible value / range queries (simple indexing)
 
 TODO Spike 2 - Dependencies
 ===============
-1) Add transaction notification to native store
-2) Derive functions as IFn objects that cache results given params
-3) Capture query dependencies up derive call stack
-4) Derive functions associate store, params, deps, and result
-5) Derive functions listen to store txns passed into it
-6) Invalidate cache as appropriate (use store dependency API)
+x 1) Add transaction notification to native store
+x 2) Derive functions as IFn objects that cache results given params
+x 3) Capture query dependencies up derive call stack
+x 4) Derive functions associate store, params, deps, and result
+x 5) Derive functions listen to store txns passed into it
+x 6) Invalidate cache as appropriate (use store dependency API)
 7) Develop Om extension to only re-render if any dependencies were invalidated
 
 TODO Spike 3 - Performance
 ===============
-1) Native store indexing
-2) Think carefully about copying
-3) Develop conventions around manipulation of native objects
-4) Think about how to lazy/eager policies for derive fns
+x 1) Native store indexing
+x 2) Think carefully about copying
+x 3) Develop conventions around manipulation of native objects
+4) Think about lazy/eager policies for derive fns
    (e.g. simple derive functions could update cache from txn without query)
 
 
 Other Desired Features
 ================
-Inhibit side effects to heap objects outside transaction!
-Secondary indexing allowing map/sort/filter (without copying?)
-Simple schemas to identify relational links among objects
-Create "Reference" values on import that, when derefed, return a copy of the target object
+x Inhibit side effects to heap objects outside transaction!
+x Secondary indexing allowing map/sort/filter (without copying?)
+x Simple schemas to identify relational links among objects
+x Create "Reference" values on import that, when derefed, return a copy of the target object
 Turn on 'always copy' for debugging purposes
 
 
