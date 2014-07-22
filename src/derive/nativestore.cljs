@@ -34,6 +34,93 @@
   (-transact! [store f args]))
 
 ;;
+;; Native Dependencies
+;; ============================
+
+;; A dependency representation is:
+;;
+;; #js { _root: #js [<id_i> ...] 
+;;       <idx_name>: #js [start end] }
+;;
+;; The root is a sorted list of object IDs (reference traversal or direct lookups)
+;; The remaining index lookups maintain value ranges traversed
+;; These become set intersection and range overlap calculations when testing
+;; for the impact of a transaction
+;;
+;; The left side dependency is mutated and returned by all operations
+;;
+
+(defn- sorted-insert!
+  "Mutates r1.  Keep list of merged IDs in sorted order"
+  [r1 r2]
+  (goog.array.forEach r2 (fn [v i a] (goog.array.binaryInsert r1 v))))
+
+(defn- merge-range!
+  "Mutates r1. The updated range becomes the union of the two ranges"
+  [compfn range1 range2]
+  (let [r1s (aget range1 0)
+        r1e (aget range1 1)
+        r2s (aget range2 0)
+        r2e (aget range2 1)]
+    (when (< (compfn r2s r1s) 0)
+      (aset range1 0 r2s))
+    (when (> (compfn r2e r1e) 0)
+      (aset range1 1 r2e))))
+
+(defn- merge-index!
+  "Merge the index range or root set"
+  [nset idx range1 range2]
+  (if (nil? idx) ; root?
+    (sorted-insert! range1 range2)
+    (merge-range! (comparator-fn idx) range1 range2)))
+
+
+(defn- intersect?
+  "Do two sorted sets of integers intersect?"
+  [this other]
+  (let [tlen (.-length this)
+        olen (.-length other)]
+    (loop [i 0 j 0]
+      (if (or (= i tlen) (= j olen))
+        false
+        (let [v1 (aget this i)
+              v2 (aget other j)]
+          (cond (= v1 v2) true
+                (> (compare v1 v2) 0) (recur i (inc j))
+                :default (recur (inc i) j)))))))
+
+(defn- overlap?
+  "Does the interval of other overlap this?"
+  [compfn range1 range2]
+  (let [r1s (aget range1 0)
+        r1e (aget range1 1)
+        r2s (aget range2 0)
+        r2e (aget range2 1)]
+    (not (or (> (compfn r2s r1e) 0)
+             (< (compfn r2e r1s) 0)))))
+  
+(defn- match-index?
+  [nset idx this-range other-range]
+  (if (nil? idx) ; root?
+    (intersect? this-range other-range)
+    (overlap? (comparator-fn idx) this-range other-range)))
+
+(deftype NativeDependencySet [store deps]
+  IDependencySet
+  (merge-deps [this other]
+    (goog.object.forEach
+     other (fn [v k] (merge-index! this (get-index store k) (aget deps k) v)))
+    this)
+  (match-deps [this other]
+    (goog.object.some 
+     other (fn [v k] (match-index? this (get-index store k) (aget deps k) v)))
+    this))
+
+(defn make-dependencies
+  ([store] (NativeDependencySet. store #js {}))
+  ([store init] (NativeDependencySet. store init)))
+  
+;;
 ;; Instance protocols
 ;; ============================
 
