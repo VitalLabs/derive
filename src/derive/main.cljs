@@ -5,6 +5,7 @@
             [om.core :as om :include-macros true]
             [sablono.core :as html :refer-macros [html]]
             [derive.repl :as repl]
+            [derive.om-mixin :as omix]
             [derive.debug-level :as debug-level]
             [derive.deps :as deps :include-macros true]
             [derive.nativestore :as store :refer [insert! delete! cursor transact!]]
@@ -89,20 +90,22 @@
   (fn [old]
     (mod (inc old) modulus)))
 
+(def RootComponent
+  (let [obj (om/specify-state-methods! (clj->js om/pure-methods))]
+    (aset obj "mixins" #js [omix/DeriveMixin])
+    (aset obj "renderDerived"
+          (fn [this db]
+            (html
+             [:div
+              [:h3 "Om Application"]
+              [:p (derive-text db (inc (:current app)))]
+              [:button {:on-click #(om/transact! app :current (inc-mod 4))} "Next"]])))
+    (js/React.createClass obj)))
+
 (defn root-component
   [app owner]
-  (reify
-    om/IRender
-    (render [_]
-      (let [db (om/get-shared owner :db)]
-        (with-tracked-dependencies
-          [parent result deps (deps/empty-deps db)]
-          (html
-           [:div
-            [:h3 "Om Application"]
-            [:p (derive-text db (inc (:current app)))]
-            [:button {:on-click #(om/transact! app :current (inc-mod 4))} "Next"]])
-          (deps/subscribe! db #(om/refresh! owner)))))))
+  (RootComponent. nil))
+      
 
 ;;
 ;; Setup and Lifecycle Management
