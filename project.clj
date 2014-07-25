@@ -6,16 +6,16 @@
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [org.clojure/clojurescript "0.0-2268"]
                  [im.chit/purnam.native "0.4.3"]
-                 [figwheel "0.1.3-SNAPSHOT"]
                  [prismatic/schema "0.2.2"]
                  [reagent "0.4.2"]
+                 [figwheel "0.1.3-SNAPSHOT"]
                  [sablono "0.2.18"]
                  [vitalreactor/om "0.6.3.1"]]
   :plugins [[lein-cljsbuild "1.0.3"]
             [lein-exec "0.3.3"]
             [lein-externs "0.1.3"]
-            [lein-figwheel "0.1.3-SNAPSHOT"]
             [clj-stacktrace "0.2.7"]
+            [lein-figwheel "0.1.3-SNAPSHOT"]
             [com.cemerick/clojurescript.test "0.2.2"]
             [com.cemerick/austin "0.1.4"]]
   :profiles
@@ -62,7 +62,7 @@
                         (pb/cljs-repl :repl-env (brepl/repl-env :port 9000)))]
 
          :figwheel {:http-server-root "public" ;; assumes "resources"
-                    :server-port 3449
+                    :server-port 3450
                     :css-dirs ["resources/public/css/"]}
          }
 

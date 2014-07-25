@@ -1,7 +1,6 @@
 (ns derive.repl
-  (:require [clojure.browser.repl :as repl]
-            [derive.tools :as tools]))
+  (:require [clojure.browser.repl :as repl]))
 
 (defn connect []
-  (tools/log "(repl/connect)")
+  (.log js/console "(repl/connect)")
   (repl/connect "http://localhost:9000/repl"))
