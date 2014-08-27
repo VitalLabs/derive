@@ -8,14 +8,14 @@
                  [im.chit/purnam.native "0.4.3"]
                  [prismatic/schema "0.2.2"]
                  [reagent "0.4.2"]
-                 [figwheel "0.1.3-SNAPSHOT"]
+                 [com.vitalreactor/figwheel "0.1.4-SNAPSHOT"]
                  [sablono "0.2.18"]
                  [vitalreactor/om "0.6.3.1"]]
   :plugins [[lein-cljsbuild "1.0.3"]
             [lein-exec "0.3.3"]
             [lein-externs "0.1.3"]
             [clj-stacktrace "0.2.7"]
-            [lein-figwheel "0.1.3-SNAPSHOT"]
+            [com.vitalreactor/lein-figwheel "0.1.4-SNAPSHOT"]
             [com.cemerick/clojurescript.test "0.2.2"]
             [com.cemerick/austin "0.1.4"]]
   :profiles
@@ -49,7 +49,7 @@
                                        "(browser-repl)")
                         :port 4004
                         :caught clj-stacktrace.repl/pst+
-                        :skip-default-init false}
+                        :skip-default-init false }
 
          :injections [(require '[cljs.repl.browser :as brepl]
                                '[cemerick.piggieback :as pb])

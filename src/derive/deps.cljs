@@ -46,6 +46,14 @@
   (rem-value! [this params])
   (invalidate! [this store deps]))
 
+;; - IDependencyTracker
+;; - IDependencyCache
+
+;; - InvalidationListener is setup in current context, possibly with options
+;; - Sources cache subscribers and call it with options, args on invalidation
+;; - A call to a source that calls other sources creates an invalidation chain
+;; - Updates can be suspended with 
+
 ;;
 ;; Default dependency set
 ;;
