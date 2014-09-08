@@ -432,7 +432,7 @@ Testing Workflow
 
 4) Run '(browser-repl)'
 
-5) Load localhost:3449/index.html into a browser
+5) Load localhost:3450/index.html into a browser
 
 
 Acknowledgements

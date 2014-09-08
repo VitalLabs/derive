@@ -10,6 +10,7 @@
                  [reagent "0.4.2"]
                  [com.vitalreactor/figwheel "0.1.4-SNAPSHOT"]
                  [sablono "0.2.18"]
+                 [clj-stacktrace "0.2.7"]
                  [vitalreactor/om "0.6.3.1"]]
   :plugins [[lein-cljsbuild "1.0.3"]
             [lein-exec "0.3.3"]
