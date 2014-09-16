@@ -172,6 +172,8 @@
 (defprotocol IReadOnly
   (-read-only? [_]))
 
+(declare writeable!)
+
 (deftype Native [^:mutable __ro]
   IReadOnly
   (-read-only? [_] __ro)
@@ -230,19 +232,19 @@
 
   IAssociative
   (-assoc [native k v]
-    (let [new (goog.object.clone native)]
+    (let [new (writeable! (goog.object.clone native))]
       (aset new (if (keyword? k) (name k) k) v)
       new))
   
   IMap
   (-dissoc [native k]
-    (let [new (goog.object.clone native)]
+    (let [new (writeable! (goog.object.clone native))]
       (cljs.core/js-delete new (if (keyword? k) (name k) k))
       new))
     
   ICollection
   (-conj [native [k v]]
-    (let [new (goog.object.clone native)]
+    (let [new (writeable! (goog.object.clone native))]
       (aset new (if (keyword? k) (name k) k) v)
       new)))
 
@@ -260,6 +262,17 @@
     (set! (.-constructor jsobj) Native)
     ;; TODO: Copy impls?
     ))
+
+(defn native? [native]
+  (= (.-constructor native) Native))
+
+(defn read-only! [native]
+  {:pre [(native? native)]}
+  (set! (.-__ro native) true))
+
+(defn writeable! [native]
+  {:pre [(native? native)]}
+  (set! (.-__ro native) false))
 
 ;;
 ;; Native object store
