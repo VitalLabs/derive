@@ -288,6 +288,17 @@
   ([o1 o2 & more]
      (apply upsert-merge (upsert-merge o1 o2) more)))
 
+;; Return a cursor for walking a range of the index
+(deftype Cursor [idx start end ^:mutable valid?]
+  IReduce
+  (-reduce [this f]
+    (-reduce this f (f)))
+  (-reduce [this f init]
+    (let [a (.-arry idx)]
+      (loop [i start ret init]
+        (if (< i end)
+          (recur (inc i) (f ret (aget a i)))
+          ret)))))
 
 ;; Hash KV Index, meant to be for a root store index (unique keys)
 ;; - Merging upsert against existing if keyfn output matches
@@ -317,22 +328,19 @@
       (js-assoc hashmap key (if old (upsert-merge old obj) obj))))
   (unindex! [idx obj]
     (let [key (keyfn obj)]
-      (js-dissoc hashmap key obj))))
+      (js-dissoc hashmap key obj)))
+
+  IScannable
+  (-get-cursor [idx]
+    (let [vals #js {:arry (goog.object.getValues (.-hashmap idx))}]
+      (Cursor. vals 0 (alength (.-arry vals)) true)))
+  (-get-cursor [idx start]
+    (assert false))
+  (-get-cursor [idx start end]
+    (assert false)))
 
 (defn root-index []
   (HashIndex. #(aget % "id") #js {}))
-
-;; Return a cursor for walking a range of the index
-(deftype Cursor [idx start end ^:mutable valid?]
-  IReduce
-  (-reduce [this f]
-    (-reduce this f (f)))
-  (-reduce [this f init]
-    (let [a (.-arry idx)]
-      (loop [i start ret init]
-        (if (< i end)
-          (recur (inc i) (f ret (aget a i)))
-          ret)))))
 
 ;; KV index using binary search/insert/remove on array
 ;; - Always inserts new objects in sorted order
@@ -547,7 +555,7 @@
   "Walk the entire store, or an index"
   ([store]
      ;; TODO - this is broken, add inform tracker, etc.
-     (apply -get-cursor store))
+     (-get-cursor (.-root store)))
   ([store index start]
      (deps/inform-tracker store (js-obj (name index) (array start (last-val index)))) ;; shorthand
      (-get-cursor (get-index store index) start))
