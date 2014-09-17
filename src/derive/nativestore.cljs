@@ -172,9 +172,12 @@
 (defprotocol IReadOnly
   (-read-only? [_]))
 
-(declare writeable!)
+(declare clone-native)
 
 (deftype Native [^:mutable __ro]
+  IEmptyableCollection
+  (-empty [_] (Native. false))
+
   IReadOnly
   (-read-only? [_] __ro)
 
@@ -232,19 +235,19 @@
 
   IAssociative
   (-assoc [native k v]
-    (let [new (writeable! (goog.object.clone native))]
+    (let [new (clone-native native)]
       (aset new (if (keyword? k) (name k) k) v)
       new))
   
   IMap
   (-dissoc [native k]
-    (let [new (writeable! (goog.object.clone native))]
+    (let [new (clone-native native)]
       (cljs.core/js-delete new (if (keyword? k) (name k) k))
       new))
     
   ICollection
   (-conj [native [k v]]
-    (let [new (writeable! (goog.object.clone native))]
+    (let [new (clone-native native)]
       (aset new (if (keyword? k) (name k) k) v)
       new)))
 
@@ -268,11 +271,20 @@
 
 (defn read-only! [native]
   {:pre [(native? native)]}
-  (set! (.-__ro native) true))
+  (set! (.-__ro native) true)
+  native)
 
 (defn writeable! [native]
   {:pre [(native? native)]}
-  (set! (.-__ro native) false))
+  (set! (.-__ro native) false)
+  native)
+
+(defn- clone-native [native]
+  {:pre [(native? native)]}
+  (let [new (goog.object.clone native)]
+    (set! (.-constructor new) (.-constructor native))
+    (writeable! new)))
+
 
 ;;
 ;; Native object store
