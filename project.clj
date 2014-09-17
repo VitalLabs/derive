@@ -4,20 +4,20 @@
   :license {:name "MIT License"
             :url "http://github.com/vitalreactor/derive/blob/master/LICENSE"}
   :dependencies [[org.clojure/clojure "1.6.0"]
-                 [org.clojure/clojurescript "0.0-2268"]
+                 [org.clojure/clojurescript "0.0-2311"]
                  [im.chit/purnam.native "0.4.3"]
-                 [prismatic/schema "0.2.2"]
+                 [prismatic/schema "0.2.6"]
                  [reagent "0.4.2"]
                  [com.vitalreactor/figwheel "0.1.4-SNAPSHOT"]
-                 [sablono "0.2.18"]
+                 [sablono "0.2.22"]
                  [clj-stacktrace "0.2.7"]
-                 [vitalreactor/om "0.6.3.1"]]
+                 [om "0.7.1"]]
   :plugins [[lein-cljsbuild "1.0.3"]
             [lein-exec "0.3.3"]
             [lein-externs "0.1.3"]
             [clj-stacktrace "0.2.7"]
             [com.vitalreactor/lein-figwheel "0.1.4-SNAPSHOT"]
-            [com.cemerick/clojurescript.test "0.2.2"]
+            [com.cemerick/clojurescript.test "0.3.1"]
             [com.cemerick/austin "0.1.4"]]
   :profiles
   {:dev {:cljsbuild
