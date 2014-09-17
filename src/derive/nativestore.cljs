@@ -165,6 +165,14 @@
   (reference-id [_] id)
   (reference-db [_] store))
 
+(declare native?)
+
+(defn reference [db obj]
+  (NativeReference.
+   db (if (native? obj)
+        ((key-fn (.-root db)) obj)
+        obj)))
+
 ;; Mutation can only be done on Natives in
 ;; a transaction or on copies of Natives generated
 ;; via assoc, etc. or store/clone
