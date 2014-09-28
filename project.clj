@@ -1,70 +1,26 @@
-(defproject com.vitalreactor/derive "0.1.0-SNAPSHOT"
-  :description "Simple library to support computing the 'latest' value derived from a mutable data source.  Designed to integrate into React/Om and with data stores like Datascript and NativeStore"
+(defproject com.vitalreactor/derive "0.2.0-SNAPSHOT"
+  :description "Clojurescript library to support efficient computation of up to date values derived from a mutable data source.  Designed to integrate with functional UI frameworks like Om and with data stores like Datascript and NativeStore"
   :url "http://github.com/vitalreactor/derive"
   :license {:name "MIT License"
             :url "http://github.com/vitalreactor/derive/blob/master/LICENSE"}
   :dependencies [[org.clojure/clojure "1.6.0"]
-                 [org.clojure/clojurescript "0.0-2311"]
-                 [im.chit/purnam.native "0.4.3"]
-                 [prismatic/schema "0.2.6"]
-                 [reagent "0.4.2"]
-                 [com.vitalreactor/figwheel "0.1.4-SNAPSHOT"]
-                 [sablono "0.2.22"]
-                 [clj-stacktrace "0.2.7"]
-                 [om "0.7.1"]]
+                 [org.clojure/clojurescript "0.0-2356"]
+                 [prismatic/schema "0.2.6"]]
   :plugins [[lein-cljsbuild "1.0.3"]
-            [lein-exec "0.3.3"]
-            [lein-externs "0.1.3"]
-            [clj-stacktrace "0.2.7"]
-            [com.vitalreactor/lein-figwheel "0.1.4-SNAPSHOT"]
-            [com.cemerick/clojurescript.test "0.3.1"]
-            [com.cemerick/austin "0.1.4"]]
+            [com.cemerick/clojurescript.test "0.3.1"]]
+  :hooks [leiningen.cljsbuild]
   :profiles
-  {:dev {:cljsbuild
-         {:builds
-          [ {:id "main"
-             :source-paths ["src" "dev"]
-             :compiler {:output-to "resources/public/js/derive.js"
-                        :output-dir "resources/public/js/out"
-                        :optimizations :none
-                        :pretty-print true
-                        :preamble ["templates/js/function_prototype_polyfill.js"]
-                        :source-map true}}
+  {:test {:dependencies [[com.cemerick/clojurescript.test "0.3.1"]]
+          :cljsbuild
+          {:builds
+           [ {:id "test"
+              :source-paths ["src" "test"]
+              :compiler {:output-to "target/test/testable.js"
+                         :output-dir "target/test"
+                         :optimizations :whitespace
+                         :pretty-print true
+                         :preamble ["phantomjs-shims.js"]}
+              :notify-command ["phantomjs" :cljs.test/runner "target/test/testable.js"]}]
+           :test-commands {"all" ["phantomjs" :runner
+                                  "target/test/testable.js"]}}}})
 
-            #_{:id "test"
-             :source-paths ["src" "test"]
-             :notify-command ["scripts/run_tests.rb" :cljs.test/runner]
-             :compiler {:output-to "resources/public/js/derive.js"
-                        ;:output-dir "resources/public/js/out"
-                        :optimizations :none
-                        :pretty-print true
-                        :source-map true
-                        :preamble ["templates/js/function_prototype_polyfill.js"]}} ]
-
-;          :test-commands {"unit-tests" ["scripts/run_tests.rb" :runner]}
-          :repl-launch-commands {"phantom" ["phantomjs" "phantom/repl.js"]
-                                 "chrome" ["chrome"]}
-          }
-
-         :repl-options {:init (println "To start the browser-repl, run:\n"
-                                       "(browser-repl)")
-                        :port 4004
-                        :caught clj-stacktrace.repl/pst+
-                        :skip-default-init false }
-
-         :injections [(require '[cljs.repl.browser :as brepl]
-                               '[cemerick.piggieback :as pb])
-                      (let [orig (ns-resolve (doto 'clojure.stacktrace require)
-                                            'print-cause-trace)
-                           new (ns-resolve (doto 'clj-stacktrace.repl require)
-                                           'pst)]
-                       (alter-var-root orig (constantly (deref new))))
-                      (defn browser-repl []
-                        (pb/cljs-repl :repl-env (brepl/repl-env :port 9000)))]
-
-         :figwheel {:http-server-root "public" ;; assumes "resources"
-                    :server-port 3450
-                    :css-dirs ["resources/public/css/"]}
-         }
-
-   :release {}})

@@ -1,8 +1,9 @@
-(ns derive.deps
-  (:require [clojure.set :as s]
-            [clojure.core.reducers :as r])
+(ns derive.core
+  (:require [clojure.set :as s])
   (:refer-clojure :exclude [reset!]))
 
+
+;; ============================
 ;; Dependency Tracking
 ;; ============================
 
@@ -10,9 +11,9 @@
        :dynamic true}
   *tracker* nil)
 
-
 (defprotocol IDependencySet
-  "An immutable set of dependencies. Passed to dependency trackers during queries via record-dependency"
+  "An immutable set of dependencies. Passed to dependency trackers
+  during queries via record-dependency."
   (merge-deps [this deps]
     "Merge two dependencies")
   (match-deps [this set]
@@ -41,18 +42,11 @@
   (reset! [this] "Clear cache")
   (get-value [this params]
     "Returns cached value if exists for params")
-  (add-value! [this params value store deps]
+  (add-value! [this params value dependency-map]
     "Informs store that a particular params yeilds value given current store + deps")
   (rem-value! [this params])
   (invalidate! [this store deps]))
 
-;; - IDependencyTracker
-;; - IDependencyCache
-
-;; - InvalidationListener is setup in current context, possibly with options
-;; - Sources cache subscribers and call it with options, args on invalidation
-;; - A call to a source that calls other sources creates an invalidation chain
-;; - Updates can be suspended with 
 
 ;;
 ;; Default dependency set
@@ -75,54 +69,59 @@
 ;; Simple tracker
 ;;
 
+(defn- matching-dep? [dmap store deps]
+  (some (fn [[vstore vdeps]]
+          (and (= store vstore)
+               (or (nil? deps) (nil? vdeps)
+                   (match-deps vdeps deps))))
+        dmap))
+
 (deftype DefaultCache [^:mutable cache]
   IDependencyCache
-  (get-value [_ params] (get cache params))
-  (add-value! [this params value store deps]
-    (set! cache (assoc cache params [value store deps]))
+  (get-value [_ params] (first (get cache params)))
+  (add-value! [this params value dmap]
+    (set! cache (assoc cache params [value dmap]))
     this)
   (rem-value! [this params]
     (set! cache (dissoc cache params)))
   (invalidate! [this store deps]
-    (->> (reduce (fn [c [params [value vstore vdeps]]]
-                   (if (and (= vstore store)
-                            (or (nil? deps) (nil? vdeps)
-                                (match-deps vdeps deps)))
-                     (dissoc! c params)
-                     c))
-                 (transient cache)
-                 cache)
-         persistent!
-         (set! cache)))
+    (let [[c invalidated]
+          (reduce (fn [[c i] [params [value dmap]]]
+                    (if (matching-dep? dmap store deps)
+                      [(dissoc! c params) (conj i params)]
+                      [c i]))
+                  [(transient cache) []]
+                  cache)]
+      (set! cache (persistent! c))
+      (set invalidated)))
   (reset! [this] (set! cache {}) this))
 
 (defn default-cache []
   (DefaultCache. {}))
     
-(deftype DefaultTracker [^:mutable deps]
+(deftype DefaultTracker [^:mutable dmap]
   IDependencyTracker
   (depends! [this store new-deps]
-    #_(println "depends!: " (.-deps deps) (or (.-deps new-deps) new-deps) "\n")
-    (set! deps (merge-deps deps new-deps)))
+    #_(println "depends!: " dmap "\n")
+    (set! dmap (update-in dmap [store] (fnil merge-deps (empty-deps store)) new-deps)))
 
-  (dependencies [this] deps))
+  (dependencies [this] dmap))
 
 (defn default-tracker 
-  ([] (DefaultTracker. #{}))
-  ([deps] (DefaultTracker. deps)))
-
+  ([] (DefaultTracker. {}))
+  ([dmap] (DefaultTracker. dmap)))
 
 ;; Utilities for stores
 
 (defn tracking? [] (not (nil? *tracker*)))
 
 (defn inform-tracker
-  ([store deps]
+  ([store args]
      (when (tracking?)
-       (inform-tracker *tracker* store deps)))
-  ([tracker store deps]
-     #_(println "Informing tracker: " (or (.-deps deps) deps) " t? " *tracker* "\n")
-     (depends! tracker store deps)))
+       (inform-tracker *tracker* store args)))
+  ([tracker store args]
+     #_(println "Informing tracker: " args " t? " *tracker* "\n")
+     (depends! tracker store (if (set? args) args #{args}))))
 
 
 ;;
@@ -135,46 +134,67 @@
   (-invoke [this]
     (dfn this))
   (-invoke [this a]
+    (inform-tracker this [a])
     (dfn this a))
   (-invoke [this a b]
+    (inform-tracker this [a b])
     (dfn this a b))
   (-invoke [this a b c]
+    (inform-tracker this [a b c])
     (dfn this a b c))
   (-invoke [this a b c d]
+    (inform-tracker this [a b c d])
     (dfn this a b c d))
   (-invoke [this a b c d e]
+    (inform-tracker this [a b c d e])
     (dfn this a b c d e))
   (-invoke [this a b c d e f]
+    (inform-tracker this [a b c d e f])
     (dfn this a b c d e f))
   (-invoke [this a b c d e f g]
+    (inform-tracker this [a b c d e f g])
     (dfn this a b c d e f g))
   (-invoke [this a b c d e f g h]
+    (inform-tracker this [a b c d e f g h])
     (dfn this a b c d e f g h))
   (-invoke [this a b c d e f g h i]
+    (inform-tracker this [a b c d e f g h i])
     (dfn this a b c d e f g h i))
   (-invoke [this a b c d e f g h i j]
+    (inform-tracker this [a b c d e f g h i j])
     (dfn this a b c d e f g h i j))
   (-invoke [this a b c d e f g h i j k]
+    (inform-tracker this [a b c d e f g h i j k])
     (dfn this a b c d e f g h i j k))
   (-invoke [this a b c d e f g h i j k l]
+    (inform-tracker this [a b c d e f g h i j k l])
     (dfn this a b c d e f g h i j k l))
   (-invoke [this a b c d e f g h i j k l m]
+    (inform-tracker this [a b c d e f g h i j k l m])
     (dfn this a b c d e f g h i j k l m))
   (-invoke [this a b c d e f g h i j k l m n]
+    (inform-tracker this [a b c d e f g h i j k l m n])
     (dfn this a b c d e f g h i j k l m n))
   (-invoke [this a b c d e f g h i j k l m n o]
+    (inform-tracker this [a b c d e f g h i j k l m n o])
     (dfn this a b c d e f g h i j k l m n o))
   (-invoke [this a b c d e f g h i j k l m n o p]
+    (inform-tracker this [a b c d e f g h i j k l m n o p])
     (dfn this a b c d e f g h i j k l m n o p))
   (-invoke [this a b c d e f g h i j k l m n o p q]
+    (inform-tracker this [a b c d e f g h i j k l m n o p q])
     (dfn this a b c d e f g h i j k l m n o p q))
   (-invoke [this a b c d e f g h i j k l m n o p q r]
+    (inform-tracker this [a b c d e f g h i j k l m n o p q r])
     (dfn this a b c d e f g h i j k l m n o p q r))
   (-invoke [this a b c d e f g h i j k l m n o p q r s]
+    (inform-tracker this [a b c d e f g h i j k l m n o p q r s])
     (dfn this a b c d e f g h i j k l m n o p q r s))
   (-invoke [this a b c d e f g h i j k l m n o p q r s t]
+    (inform-tracker this [a b c d e f g h i j k l m n o p q r s t])
     (dfn this a b c d e f g h i j k l m n o p q r s t))
   (-invoke [this a b c d e f g h i j k l m n o p q r s t rest]
+    (inform-tracker this [a b c d e f g h i j k l m n o p q r s t rest])
     (apply dfn this a b c d e f g h i j k l m n o p q r s t rest))
 
   IDependencySource
@@ -194,8 +214,7 @@
 
 (defn create-derive-fn [fname]
   (DeriveFn. fname empty-derive-fn empty-derive-fn
-             #{} (derive.deps/default-cache) {}))
-  
+             #{} (derive.core/default-cache) {}))
 
 (defn ensure-subscription 
   "Ensure we're subscribed to stores we encounter"
@@ -212,11 +231,12 @@
   [derive params]
   (get-value (.-cache derive) params))
 
-(defn update-derive
-  [derive params value store deps parent-tracker]
-  (add-value! (.-cache derive) params value store deps)
-  (when parent-tracker (depends! parent-tracker store deps))
-  value)
+(defn tracker-handler [dfn params]
+  (fn [result dmap]
+    #_(println result dmap)
+    (doseq [[store deps] dmap]
+      (ensure-subscription dfn store))
+    (add-value! (.-cache dfn) params result dmap)))
 
 (defn notify-listeners [store deps]
   (let [listeners (.-listeners store)]
@@ -228,10 +248,11 @@
 (defn derive-listener
   "Helper. Handle source listener events"
   [derive store deps]
-  #_(println "Derive received: " (.-deps deps))
-  (let [cache (.-cache derive)]
-    (invalidate! cache store deps)
-    (notify-listeners derive deps)))
+  #_(println "Derive received: " (or (.-deps deps) deps))
+  (let [cache (.-cache derive)
+        param-set (set (invalidate! cache store deps))]
+    (when-not (empty? param-set)
+      (notify-listeners derive param-set))))
     
 (defn invalidate-all-listeners
   "Helper. Inform upstream when we're redefined"
@@ -239,6 +260,5 @@
   (doall
    (map (fn [f] (f derive nil))
         (flatten (vals (.-listeners derive))))))
-
 
   
