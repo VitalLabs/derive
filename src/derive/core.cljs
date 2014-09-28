@@ -7,9 +7,14 @@
 ;; Dependency Tracking
 ;; ============================
 
-(def ^{:doc "Bound dependency trackers are informed of encountered dependencies"
+(def ^{:doc "Dependency tracker that is informed of encountered dependencies"
        :dynamic true}
   *tracker* nil)
+
+(def ^{:doc "Whether a dependency tracker should shadow lower level, used to
+             implement stores"
+       :dynamic true}
+  *shadow* nil)
 
 (defprotocol IDependencySet
   "An immutable set of dependencies. Passed to dependency trackers
@@ -78,7 +83,7 @@
 
 (deftype DefaultCache [^:mutable cache]
   IDependencyCache
-  (get-value [_ params] (first (get cache params)))
+  (get-value [_ params] (get cache params))
   (add-value! [this params value dmap]
     (set! cache (assoc cache params [value dmap]))
     this)
@@ -229,7 +234,7 @@
 (defn derive-value
   "Handle deps and cache values from normal calls"
   [derive params]
-  (get-value (.-cache derive) params))
+  (first (get-value (.-cache derive) params)))
 
 (defn tracker-handler [dfn params]
   (fn [result dmap]

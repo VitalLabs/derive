@@ -3,11 +3,15 @@
 (defmacro with-tracked-dependencies
   "Evaluate the body, tracking dependencies, and call the handler
    with a map of {src dep} and result"
-  [[handler] & body]
-  `(binding [derive.core/*tracker* (derive.core/default-tracker)]
-     (let [result# (do ~@body)
-           dmap# (derive.core/dependencies derive.core/*tracker*)]
-       (~handler result# dmap#)
+  [[handler & [shadow?]] & body]
+  `(binding [derive.core/*tracker* (if derive.core/*shadow*
+                                     derive.core/*tracker*
+                                     (derive.core/default-tracker))
+             derive.core/*shadow* (or derive.core/*shadow* ~shadow?)]
+     (let [result# (do ~@body)]
+       (when-not derive.core/*shadow*
+         (let [dmap# (derive.core/dependencies derive.core/*tracker*)]
+           (~handler result# dmap#)))
        result#)))
 
 (defmacro defnd
@@ -24,7 +28,7 @@
            dfn# (fn ~(symbol (str (name fname) "-method"))
                  [self# ~@args]
                  (let [params# ~(vec args)]
-                   (if-let [[value#] (derive.core/derive-value self# params#)]
+                   (if-let [value# (derive.core/derive-value self# params#)]
                      value#
                      (with-tracked-dependencies
                        [(derive.core/tracker-handler self# params#)]
