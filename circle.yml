@@ -1,0 +1,3 @@
+test:
+  override:
+    - lein with-profiles base,test trampoline cljsbuild test
