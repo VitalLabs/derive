@@ -14,6 +14,22 @@
            (~handler result# dmap#)))
        result#)))
 
+(defmacro on-changes
+  "Useful in contexts like an om render loop where we simply
+  want to refresh the UI when a change is detected. e.g.
+  (render [_]
+    (derive/on-changes #(om/refresh owner)
+      (html  "
+  [[subscribe-fn update-fn] & body]
+  `(with-tracked-dependencies
+     [ (fn [result# dependency-map#]
+         (let [cb# (fn [& args#] (~update-fn))]
+           (~subscribe-fn store# cb# dependency-map#)
+           (doseq [[store# query-deps#] dependency-map#]
+             (derive.core/subscribe! store# cb# query-deps#))))
+     ]
+     ~@body))
+
 (defmacro defnd
   "Create a Derive function which manages the derive lifecycle for a
    set of function results that call out to other derive functions or

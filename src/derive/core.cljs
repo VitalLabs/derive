@@ -266,4 +266,32 @@
    (map (fn [f] (f derive nil))
         (flatten (vals (.-listeners derive))))))
 
+;;  
+;; Om Support
+;;
+
+(defn clear-listener!
+  "Call from will-unmount and when re-subscribing a component"
+  [owner]
+  (let [listener (aget owner "__derive_listener")
+        dmap (aget owner "__derive_dmap")]
+    (doseq [[store query-deps] dmap]
+      (derive.core/unsubscribe! store listener query-deps))
+    (aset owner "__derive_listener" nil)
+    (aset owner "__derive_dmap" nil)
+    owner))
+
+(defn save-listener! [owner listener dmap]
+  (aset owner "__derive_listener" listener)
+  (aset owner "__derive_dmap" dmap)
+  owner)
   
+(defn- om-subscribe-handler
+  "Call in on-changes"
+  [owner]
+  (fn [listener dmap]
+    (-> owner
+        (clear-listener!)
+        (save-listener! listener dmap))))
+          
+          

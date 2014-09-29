@@ -1,7 +1,7 @@
 (ns derive.simple-test
   (:require-macros [cemerick.cljs.test
                     :refer [is deftest with-test testing test-var]]
-                   [derive.core :refer [defnd with-tracked-dependencies]])
+                   [derive.core :refer [defnd with-tracked-dependencies on-changes]])
   (:require [cemerick.cljs.test :as t]
             [clojure.set :as set]
             [derive.core :as d]
@@ -49,7 +49,7 @@
 (deftest cache
   (let [c (d/default-cache)]
     (d/add-value! c [1 2] :result {:store #{1 4 8}})
-    (is (= (d/get-value c [1 2]) :result))
+    (is (= (first (d/get-value c [1 2])) :result))
     (is (= (d/invalidate! c :store #{4}) #{[1 2]}))))
 
 (deftest simple-store
@@ -80,7 +80,7 @@
 
 
 (defn- derive-cache-value [df args]
-  (d/get-value (.-cache df) args))
+  (first (d/get-value (.-cache df) args)))
 
 (defnd dvald [store path]
   (store/get-in store path))
@@ -122,7 +122,24 @@
     (is (= (derive-cache-value d1 [store [1 1] 3]) nil))
     (is (= (derive-cache-value d1 [store [2 1] 4]) 16))))
 
+(deftest changes
+  (let [store (store/create {1 :test1})
+        id 1
+        owner (js-obj)
+        target (atom nil)
+        render (fn [store id]
+                 (reset! target (store/get store id)))]
+    (on-changes [ (d/om-subscribe-handler owner)
+                  #(render store id) ]
+      (render store id))
+    (is (= @target :test1))
+    (store/update! store [1] :test2)
+    (is (= @target :test2))
+    (store/update! store [1] :test3)
+    (is (= @target :test3))))
+        
 
+    
 
       
         
