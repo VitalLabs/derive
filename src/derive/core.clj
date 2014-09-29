@@ -24,7 +24,7 @@
   `(with-tracked-dependencies
      [ (fn [result# dependency-map#]
          (let [cb# (fn [& args#] (~update-fn))]
-           (~subscribe-fn store# cb# dependency-map#)
+           (~subscribe-fn cb# dependency-map#)
            (doseq [[store# query-deps#] dependency-map#]
              (derive.core/subscribe! store# cb# query-deps#))))
      ]
