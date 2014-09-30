@@ -50,7 +50,7 @@
   (let [c (d/default-cache)]
     (d/add-value! c [1 2] :result {:store #{1 4 8}})
     (is (= (first (d/get-value c [1 2])) :result))
-    (is (= (d/invalidate! c :store #{4}) #{[1 2]}))))
+    (is (= (d/invalidate! c :store #{4}) [[1 2]]))))
 
 (deftest simple-store
   (let [store (store/create)
