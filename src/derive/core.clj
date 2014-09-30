@@ -7,9 +7,10 @@
   `(binding [derive.core/*tracker* (if derive.core/*shadow*
                                      derive.core/*tracker*
                                      (derive.core/default-tracker))
+             parent-shadow?#      derive.core/*shadow*
              derive.core/*shadow* (or derive.core/*shadow* ~shadow?)]
      (let [result# (do ~@body)]
-       (when-not derive.core/*shadow*
+       (when-not parent-shadow?#
          (let [dmap# (derive.core/dependencies derive.core/*tracker*)]
            (~handler result# dmap#)))
        result#)))
