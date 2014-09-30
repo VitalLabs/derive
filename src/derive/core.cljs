@@ -76,6 +76,14 @@
 
 (defn- matching-dep? [dmap store deps]
   (some (fn [[vstore vdeps]]
+          #_(.log js/console "Matching: "
+                (= store vstore)
+                (pr-str deps)
+                (pr-str vdeps)
+                (match-deps vdeps deps)
+                (and (= store vstore)
+                     (or (nil? deps) (nil? vdeps)
+                         (match-deps vdeps deps))))
           (and (= store vstore)
                (or (nil? deps) (nil? vdeps)
                    (match-deps vdeps deps))))
@@ -92,13 +100,16 @@
   (invalidate! [this store deps]
     (let [[c invalidated]
           (reduce (fn [[c i] [params [value dmap]]]
+                    #_(.log js/console "Matching result: " (matching-dep? dmap store deps))
                     (if (matching-dep? dmap store deps)
-                      [(dissoc! c params) (conj i params)]
+                      (do
+                        #_(.log js/console "Invalidating: " (pr-str params))
+                        [(dissoc! c params) (conj i params)])
                       [c i]))
                   [(transient cache) []]
                   cache)]
       (set! cache (persistent! c))
-      (set invalidated)))
+      invalidated))
   (reset! [this] (set! cache {}) this))
 
 (defn default-cache []
@@ -107,8 +118,10 @@
 (deftype DefaultTracker [^:mutable dmap]
   IDependencyTracker
   (depends! [this store new-deps]
-    #_(println "depends!: " dmap "\n")
-    (set! dmap (update-in dmap [store] (fnil merge-deps (empty-deps store)) new-deps)))
+    #_(.log js/console "depends!: " dmap (pr-str new-deps))
+    (set! dmap (update-in dmap [store] (fnil merge-deps (empty-deps store)) new-deps))
+    #_(.log js/console "   " dmap)
+    this)
 
   (dependencies [this] dmap))
 
@@ -125,7 +138,7 @@
      (when (tracking?)
        (inform-tracker *tracker* store args)))
   ([tracker store args]
-     #_(println "Informing tracker: " args " t? " *tracker* "\n")
+     #_(.log js/console "Informing tracker: " args " t? " *tracker*)
      (depends! tracker store (if (set? args) args #{args}))))
 
 
@@ -238,13 +251,14 @@
 
 (defn tracker-handler [dfn params]
   (fn [result dmap]
-    #_(println result dmap)
+    #_(.log js/console "tracker handler: " result dmap)
     (doseq [[store deps] dmap]
       (ensure-subscription dfn store))
     (add-value! (.-cache dfn) params result dmap)))
 
 (defn notify-listeners [store deps]
   (let [listeners (.-listeners store)]
+    #_(.log js/console "Update listeners " (pr-str listeners) (pr-str deps))
     (->> (keys listeners)
          (filter #(or (nil? %) (match-deps % deps))) ;; cheap consolidation
          (map (fn [k] (doseq [l (get listeners k)] (l store deps))))
@@ -253,7 +267,7 @@
 (defn derive-listener
   "Helper. Handle source listener events"
   [derive store deps]
-  #_(println "Derive received: " (or (.-deps deps) deps))
+  #_(.log js/console "Derive received: " (or (.-deps deps) deps))
   (let [cache (.-cache derive)
         param-set (set (invalidate! cache store deps))]
     (when-not (empty? param-set)
@@ -290,6 +304,7 @@
   "Call in on-changes"
   [owner]
   (fn [listener dmap]
+    #_(.log js/console "Got subscribe callback: " (pr-str dmap))
     (-> owner
         (clear-listener!)
         (save-listener! listener dmap))))
