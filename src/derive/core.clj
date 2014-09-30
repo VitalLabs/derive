@@ -4,16 +4,16 @@
   "Evaluate the body, tracking dependencies, and call the handler
    with a map of {src dep} and result"
   [[handler & [shadow?]] & body]
-  `(binding [derive.core/*tracker* (if derive.core/*shadow*
-                                     derive.core/*tracker*
-                                     (derive.core/default-tracker))
-             parent-shadow?#      derive.core/*shadow*
-             derive.core/*shadow* (or derive.core/*shadow* ~shadow?)]
-     (let [result# (do ~@body)]
-       (when-not parent-shadow?#
-         (let [dmap# (derive.core/dependencies derive.core/*tracker*)]
-           (~handler result# dmap#)))
-       result#)))
+  `(let [parent-shadow# derive.core/*shadow*]
+     (binding [derive.core/*tracker* (if derive.core/*shadow*
+                                       derive.core/*tracker*
+                                       (derive.core/default-tracker))
+               derive.core/*shadow* (or derive.core/*shadow* ~shadow?)]
+       (let [result# (do ~@body)]
+         (when-not parent-shadow#
+           (let [dmap# (derive.core/dependencies derive.core/*tracker*)]
+             (~handler result# dmap#)))
+         result#))))
 
 (defmacro on-changes
   "Useful in contexts like an om render loop where we simply
