@@ -20,6 +20,7 @@ focused on efficient indexing and manipulation of native objects.
 It should be possible to adapt Dave Dixon's work on Datascript to
 support the derive model.
 
+![Derive Architecture](https://docs.google.com/drawings/d/1lfblr7F8co5pXOmaeZ50Q1iqnplnjU3ynM3KaRPOqls/pub?w=953&amp;h=876)
 
 Benefits
 ========
@@ -65,6 +66,11 @@ Then require it inside your code
 (defnd 
 
 ```
+
+Integration with Om/React
+=========================
+
+![Om/React Architecture](https://docs.google.com/drawings/d/11iQQ2r6XMKZ03LkAcRmIjSCMMrllc77q_oiLYYt8nzg/pub?w=960&amp;h=720)
 
 Testing
 ========
