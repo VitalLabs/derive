@@ -9,8 +9,8 @@ Derive functions behave just like a memoizing function with automatic,
 behind-the-scenes cache invalidation and upstream notification when
 dependencies change.  Dependencies are captured during the dynamic
 extent of the function execution for each unique set of parameters.
-Dependencies are producd by other derive functions and from one or
-more stores that implement derive's dependency trakcing protocol.
+Dependencies are produced by other derive functions and from one or
+more stores that implement derive's dependency tracking protocol.
 
 The built-in SimpleStore (derive.simple) serves as a working example
 and [NativeStore](http://github.com/vitalreactor/nativestore) is the
