@@ -241,8 +241,8 @@
       (vector? val)
       (list? val)
       (nil? val)
-      (date? val)
       (satisfies? IDependencySource val)
+      (= (type val) (type (js/Date.)))
       (and (not (undefined? js/moment))
            (= (type val) (type (js/moment))))))
 
