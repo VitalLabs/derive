@@ -43,13 +43,15 @@
   `(def ~fname
      (let [derive# (derive.core/create-derive-fn ~fname)
            dfn# (fn ~(symbol (str (name fname) "-method"))
-                 [self# ~@args]
-                 (let [params# ~(vec args)]
-                   (if-let [value# (derive.core/derive-value self# params#)]
-                     value#
-                     (with-tracked-dependencies
-                       [(derive.core/tracker-handler self# params#)]
-                       ~@body))))
+                  [self# ~@args]
+                  (assert (derive.core/legal-params? ~(vec args))
+                          "Parameters must be valid clojure values")
+                  (let [params# ~(vec args)]
+                    (if-let [value# (derive.core/derive-value self# params#)]
+                      value#
+                      (with-tracked-dependencies
+                        [(derive.core/tracker-handler self# params#)]
+                        ~@body))))
            lfn# (fn ~(symbol (str (name fname) "-listener"))
                   [lstore# ldeps#]
                   (derive.core/derive-listener derive# lstore# ldeps#))]

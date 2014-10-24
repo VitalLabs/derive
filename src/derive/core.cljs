@@ -225,7 +225,29 @@
   (unsubscribe! [this listener deps]
     (set! listeners (update-in listeners [deps] disj listener)))
   (empty-deps [this] #{}))
- 
+
+(defn legal-param?
+  "Only primitive values and clojure data stuctures are legal
+   (must support value equality)"
+  [val]
+  (println (str "validating " val))
+  (or (string? val)
+      (number? val)
+      (symbol? val)
+      (keyword? val)
+      (= val true)
+      (= val false)
+      (map? val)
+      (vector? val)
+      (list? val)
+      (nil? val)
+      (date? val)
+      (satisfies? IDependencySource val)
+      (and (not (undefined? js/moment))
+           (= (type val) (type (js/moment))))))
+
+(defn legal-params? [vals]
+  (every? legal-param? vals))
 
 (defn empty-derive-fn [& args]
   (assert false "Uninitialized derive fn"))
@@ -308,5 +330,4 @@
     (-> owner
         (clear-listener!)
         (save-listener! listener dmap))))
-          
           
