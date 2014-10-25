@@ -230,7 +230,6 @@
   "Only primitive values and clojure data stuctures are legal
    (must support value equality)"
   [val]
-  (println (str "validating " val))
   (or (string? val)
       (number? val)
       (symbol? val)
