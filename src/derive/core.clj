@@ -4,15 +4,17 @@
   "Evaluate the body, tracking dependencies, and call the handler
    with a map of {src dep} and result"
   [[handler & [shadow?]] & body]
-  `(let [parent-shadow# derive.core/*shadow*]
+  `(let [parent-shadow# derive.core/*shadow*
+         handler# ~handler
+         shadow?# ~shadow?]
      (binding [derive.core/*tracker* (if derive.core/*shadow*
                                        derive.core/*tracker*
                                        (derive.core/default-tracker))
-               derive.core/*shadow* (or derive.core/*shadow* ~shadow?)]
+               derive.core/*shadow* (or derive.core/*shadow* shader?#)]
        (let [result# (do ~@body)]
          (when-not parent-shadow#
            (let [dmap# (derive.core/dependencies derive.core/*tracker*)]
-             (~handler result# dmap#)))
+             (handler# result# dmap#)))
          result#))))
 
 (defmacro on-changes
@@ -22,14 +24,14 @@
     (derive/on-changes #(om/refresh owner)
       (html  "
   [[subscribe-fn update-fn] & body]
-  `(with-tracked-dependencies
-     [ (fn [result# dependency-map#]
-         (let [cb# (fn [& args#] (~update-fn))]
-           (~subscribe-fn cb# dependency-map#)
-           (doseq [[store# query-deps#] dependency-map#]
-             (derive.core/subscribe! store# cb# query-deps#))))
-     ]
-     ~@body))
+  `(let [subscribe-fn# ~subscribe-fn
+         cb# ~update-fn]
+     (with-tracked-dependencies
+       [(fn [result# dependency-map#]
+          (subscribe-fn# cb# dependency-map#)
+          (doseq [[store# query-deps#] dependency-map#]
+            (derive.core/subscribe! store# cb# query-deps#)))]
+       ~@body)))
 
 (defmacro defnd
   "Create a Derive function which manages the derive lifecycle for a
