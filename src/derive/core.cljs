@@ -280,10 +280,9 @@
 (defn notify-listeners [store deps]
   (let [listeners (.-listeners store)]
     #_(.log js/console "Update listeners " (pr-str listeners) (pr-str deps))
-    (->> (keys listeners)
-         (filter #(or (nil? %) (match-deps % deps))) ;; cheap consolidation
-         (map (fn [k] (doseq [l (get listeners k)] (l store deps))))
-         doall)))
+    (doseq [ldeps (keys listeners) :when (or (nil? ldeps) (match-deps ldeps deps))]
+      (doseq [l (get listeners ldeps)]
+        (l store deps)))))
 
 (defn derive-listener
   "Helper. Handle source listener events"
