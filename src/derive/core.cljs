@@ -284,6 +284,14 @@
       (doseq [l (get listeners ldeps)]
         (l store deps)))))
 
+(defn force-invalidation
+  "Force invalidate all listeners to this store"
+  [store]
+  (let [listeners (.-listeners store)]
+    (doseq [ldeps (keys listeners)]
+      (doseq [l (get listeners ldeps)]
+        (l store nil)))))
+
 (defn derive-listener
   "Helper. Handle source listener events"
   [derive store deps]
@@ -292,7 +300,7 @@
         param-set (set (invalidate! cache store deps))]
     (when-not (empty? param-set)
       (notify-listeners derive param-set))))
-    
+
 (defn invalidate-all-listeners
   "Helper. Inform upstream when we're redefined"
   [derive]
