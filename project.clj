@@ -1,12 +1,12 @@
-(defproject com.vitalreactor/derive "0.2.0-SNAPSHOT"
+(defproject com.vitalreactor/derive "0.2.1-SNAPSHOT"
   :description "Clojurescript library to support efficient computation of up to date values derived from a mutable data source.  Designed to integrate with functional UI frameworks like Om and with data stores like Datascript and NativeStore"
   :url "http://github.com/vitalreactor/derive"
   :license {:name "MIT License"
             :url "http://github.com/vitalreactor/derive/blob/master/LICENSE"}
-  :dependencies [[org.clojure/clojure "1.6.0"]
-                 [org.clojure/clojurescript "0.0-2356"]
-                 [prismatic/schema "0.2.6"]]
-  :plugins [[lein-cljsbuild "1.0.3"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
+                 [org.clojure/clojurescript "1.7.228"]
+                 [prismatic/schema "1.0.0"]]
+  :plugins [[lein-cljsbuild "1.1.2"]
             [com.cemerick/clojurescript.test "0.3.1"]]
   :hooks [leiningen.cljsbuild]
   :profiles
