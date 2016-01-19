@@ -3,24 +3,20 @@
   :url "http://github.com/vitalreactor/derive"
   :license {:name "MIT License"
             :url "http://github.com/vitalreactor/derive/blob/master/LICENSE"}
-  :dependencies [[org.clojure/clojure "1.7.0"]
+  :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/clojurescript "1.7.228"]
                  [prismatic/schema "1.0.0"]]
-  :plugins [[lein-cljsbuild "1.1.2"]
-            [com.cemerick/clojurescript.test "0.3.1"]]
+  :plugins [[lein-cljsbuild "1.1.2"]]
   :hooks [leiningen.cljsbuild]
-  :profiles
-  {:test {:dependencies [[com.cemerick/clojurescript.test "0.3.1"]]
-          :cljsbuild
-          {:builds
-           [ {:id "test"
-              :source-paths ["src" "test"]
-              :compiler {:output-to "target/test/testable.js"
-                         :output-dir "target/test"
-                         :optimizations :whitespace
-                         :pretty-print true
-                         :preamble ["phantomjs-shims.js"]}
-              :notify-command ["phantomjs" :cljs.test/runner "target/test/testable.js"]}]
-           :test-commands {"all" ["phantomjs" :runner
-                                  "target/test/testable.js"]}}}})
+  :cljsbuild {:builds
+              [ {:id "test"
+                 :source-paths ["src" "test"]
+                 :compiler {:output-to "resources/test/js/testable.js"
+                            :output-dir "resources/test/js/out"
+                            :output-map "resources/test/js/testable.js.map"
+                            :parallel-build true
+                            :optimizations :whitespace
+                            :recompile-dependents false
+                            :pretty-print true}}]
+              :test-commands {"all" ["phantomjs" "test/phantomjs.js" "resources/test/index.html"]}})
 

@@ -1,10 +1,7 @@
 (ns derive.simple-test
-  (:require-macros [cemerick.cljs.test
-                    :refer [is deftest with-test testing test-var]]
-                   [derive.core :refer [defnd with-tracked-dependencies on-changes]])
-  (:require [cemerick.cljs.test :as t]
-            [clojure.set :as set]
-            [derive.core :as d]
+  (:require [clojure.set :as set]
+            [cljs.test :as t :refer-macros [is deftest]]
+            [derive.core :as d :refer-macros [defnd with-tracked-dependencies on-changes]]
             [derive.simple :as store]))
 
 (deftest path-to-dep
