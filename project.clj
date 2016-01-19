@@ -1,4 +1,4 @@
-(defproject com.vitalreactor/derive "0.2.1-SNAPSHOT"
+(defproject com.vitalreactor/derive "0.2.1"
   :description "Clojurescript library to support efficient computation of up to date values derived from a mutable data source.  Designed to integrate with functional UI frameworks like Om and with data stores like Datascript and NativeStore"
   :url "http://github.com/vitalreactor/derive"
   :license {:name "MIT License"
